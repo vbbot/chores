@@ -135,6 +135,8 @@ html.theme-changing *::after {
 }
 
 altcha-widget {
+  display: block;
+  width: 100%;
   --altcha-max-width: 100%;
   --altcha-border-width: 1px;
   --altcha-border-color: var(--border);
