@@ -1,22 +1,36 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { apiFetch } from '@/lib/api';
+import { useApiQuery } from '@/lib/query';
+import { queryKeys } from '@/lib/query-keys';
 import { formatUkDate, londonDateString } from '@/lib/dates';
 import { BinException, BinSchedule } from '@/lib/types';
 import { formatDayName } from '@/lib/utils';
 
 export default function BinsPage() {
-  const [schedules, setSchedules] = React.useState<BinSchedule[]>([]);
-  const [exceptions, setExceptions] = React.useState<BinException[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const {
+    data: scheduleData,
+    isLoading: schedulesLoading,
+    error: schedulesError,
+  } = useApiQuery<BinSchedule[]>(queryKeys.bins.schedules, '/api/v1/bins/schedules');
+  const { data: exceptionData, error: exceptionsError } = useApiQuery<BinException[]>(
+    queryKeys.bins.exceptions,
+    '/api/v1/bins/exceptions'
+  );
+  const schedules = scheduleData ?? [];
+  const exceptions = exceptionData ?? [];
+  const loading = schedulesLoading && !scheduleData;
+  const error = schedulesError ?? exceptionsError;
   const [formError, setFormError] = React.useState<string | null>(null);
+  const [actionError, setActionError] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [exceptionSchedule, setExceptionSchedule] = React.useState<BinSchedule | null>(null);
   const [exceptionDialogOpen, setExceptionDialogOpen] = React.useState(false);
@@ -36,27 +50,6 @@ export default function BinsPage() {
   const [exceptionError, setExceptionError] = React.useState<string | null>(null);
   const [exceptionSubmitting, setExceptionSubmitting] = React.useState(false);
 
-  const loadSchedules = async (showLoading = true) => {
-    if (showLoading) setLoading(true);
-    setError(null);
-    try {
-      const [scheduleData, exceptionData] = await Promise.all([
-        apiFetch<BinSchedule[]>('/api/v1/bins/schedules'),
-        apiFetch<BinException[]>('/api/v1/bins/exceptions'),
-      ]);
-      setSchedules(scheduleData);
-      setExceptions(exceptionData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load bin schedules');
-    } finally {
-      if (showLoading) setLoading(false);
-    }
-  };
-
-  React.useEffect(() => {
-    loadSchedules();
-  }, []);
-
   const openCreateDialog = () => {
     setFormError(null);
     setDialogOpen(true);
@@ -69,7 +62,7 @@ export default function BinsPage() {
     setFormError(null);
     try {
       const today = londonDateString();
-      const newSched = await apiFetch<BinSchedule>('/api/v1/bins/schedules', {
+      await apiFetch<BinSchedule>('/api/v1/bins/schedules', {
         method: 'POST',
         body: JSON.stringify({
           bin_type: 'other',
@@ -80,9 +73,9 @@ export default function BinsPage() {
           start_date: today,
         }),
       });
-      setSchedules((prev) => [...prev, newSched]);
       setDialogOpen(false);
       setName('');
+      await queryClient.invalidateQueries({ queryKey: queryKeys.bins.all });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to save schedule');
     } finally {
@@ -125,7 +118,7 @@ export default function BinsPage() {
         }),
       });
       setExceptionDialogOpen(false);
-      await loadSchedules(false);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.bins.all });
     } catch (err) {
       setExceptionError(err instanceof Error ? err.message : 'Could not save this change.');
     } finally {
@@ -134,19 +127,19 @@ export default function BinsPage() {
   };
 
   const removeException = async (exception: BinException) => {
-    setError(null);
+    setActionError(null);
     try {
       await apiFetch(`/api/v1/bins/exceptions/${exception.id}`, { method: 'DELETE' });
-      await loadSchedules(false);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.bins.all });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not undo this change.');
+      setActionError(err instanceof Error ? err.message : 'Could not undo this change.');
     }
   };
 
   if (loading) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold tracking-tight">Bin collections</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Bin collections</h1>
         <div className="p-8 text-center text-sm text-secondary border border-border rounded-card">
           Loading bin collection dates...
         </div>
@@ -158,7 +151,7 @@ export default function BinsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Bin collections</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Bin collections</h1>
           <p className="text-sm text-secondary">
             Weekly and fortnightly council collection schedules. Put bins out the evening before.
           </p>
@@ -166,9 +159,9 @@ export default function BinsPage() {
         <Button onClick={openCreateDialog}>Add bin</Button>
       </div>
 
-      {error && (
+      {(actionError || error) && (
         <div role="alert" className="p-3 text-sm rounded-card border border-destructive text-destructive">
-          {error}
+          {actionError ?? (error instanceof Error ? error.message : 'Could not load bin schedules.')}
         </div>
       )}
 
@@ -182,7 +175,7 @@ export default function BinsPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {schedules.map((s) => (
-            <Card key={s.id} className="border-2">
+            <Card key={s.id}>
               <CardContent>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center space-x-3">
@@ -209,7 +202,7 @@ export default function BinsPage() {
                 <div className="mt-3 pt-2 border-t border-border">
                   <button
                     onClick={() => openExceptionDialog(s)}
-                    className="text-xs underline text-secondary hover:text-foreground"
+                    className="text-xs underline text-secondary hover:text-foreground min-h-[44px] inline-flex items-center"
                   >
                     Change next collection
                   </button>
@@ -245,7 +238,7 @@ export default function BinsPage() {
                   </div>
                   <button
                     onClick={() => removeException(exception)}
-                    className="text-xs text-secondary hover:text-destructive shrink-0"
+                    className="text-xs text-secondary hover:text-destructive shrink-0 min-h-[44px] px-1"
                   >
                     Undo
                   </button>

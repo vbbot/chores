@@ -4,7 +4,8 @@ import * as React from 'react';
 import { ProgressBar } from '@/components/progress/progress-bar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { apiFetch } from '@/lib/api';
+import { useApiQuery } from '@/lib/query';
+import { queryKeys } from '@/lib/query-keys';
 import { formatUkDate } from '@/lib/dates';
 import { ProgressSummary } from '@/lib/types';
 
@@ -16,30 +17,16 @@ function dayLabel(value: string): string {
 }
 
 export default function ProgressPage() {
-  const [summary, setSummary] = React.useState<ProgressSummary | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const { data: summary, isLoading, error, refetch } = useApiQuery<ProgressSummary>(
+    queryKeys.progress,
+    '/api/v1/progress'
+  );
 
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setSummary(await apiFetch<ProgressSummary>('/api/v1/progress'));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load progress.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  React.useEffect(() => {
-    load();
-  }, []);
-
-  if (loading) {
+  if (isLoading && !summary) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold tracking-tight">Progress</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Progress</h1>
         <div className="p-8 text-center text-sm text-secondary border border-border rounded-card">
           Loading household progress...
         </div>
@@ -50,11 +37,11 @@ export default function ProgressPage() {
   if (error || !summary) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold tracking-tight">Progress</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Progress</h1>
         <div role="alert" className="p-4 border border-destructive text-destructive rounded-card text-sm">
-          {error ?? 'Could not load progress.'}
+          {error instanceof Error ? error.message : 'Could not load progress.'}
         </div>
-        <Button onClick={load} variant="secondary">
+        <Button onClick={() => refetch()} variant="secondary">
           Try again
         </Button>
       </div>
@@ -64,14 +51,14 @@ export default function ProgressPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Progress</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Progress</h1>
         <p className="text-sm text-secondary">
           Shared effort, personal levels, and on-time chore streaks.
         </p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
-        <Card className="border-2">
+        <Card>
           <CardHeader>
             <div className="flex items-baseline justify-between gap-3">
               <CardTitle className="text-base">Your level {summary.user.level}</CardTitle>
@@ -96,7 +83,7 @@ export default function ProgressPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-2">
+        <Card>
           <CardHeader>
             <div className="flex items-baseline justify-between gap-3">
               <CardTitle className="text-base">
@@ -129,7 +116,7 @@ export default function ProgressPage() {
         </Card>
       </div>
 
-      <Card className="border-2">
+      <Card>
         <CardHeader>
           <CardTitle className="text-base">This week</CardTitle>
         </CardHeader>
@@ -165,7 +152,7 @@ export default function ProgressPage() {
         </CardContent>
       </Card>
 
-      <Card className="border-2">
+      <Card>
         <CardHeader>
           <CardTitle className="text-base">Last seven days</CardTitle>
         </CardHeader>
@@ -191,7 +178,7 @@ export default function ProgressPage() {
         </CardContent>
       </Card>
 
-      <Card className="border-2">
+      <Card>
         <CardHeader>
           <CardTitle className="text-base">On-time streaks</CardTitle>
         </CardHeader>

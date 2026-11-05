@@ -6,7 +6,7 @@ export function ProgressWidget({ summary }: { summary: ProgressSummary }) {
   const best = summary.streaks[0];
 
   return (
-    <section className="border-2 border-foreground rounded-card p-4 space-y-4">
+    <section className="border-t border-border pt-4 space-y-4">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="text-base font-semibold">Progress</h2>
         <Link

@@ -2,46 +2,81 @@
 
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
-import { formatUkDate } from '@/lib/dates';
+import { addDays, formatUkDate, londonDateString } from '@/lib/dates';
+import { useApiQuery } from '@/lib/query';
+import { queryKeys } from '@/lib/query-keys';
 import { Bill } from '@/lib/types';
 import { formatPenceToPounds } from '@/lib/utils';
 
+function BillRow({
+  bill,
+  onPay,
+  onDelete,
+}: {
+  bill: Bill;
+  onPay: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="border border-border rounded-card p-3 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h3 className="font-semibold text-base">{bill.name}</h3>
+        <p className="text-xs text-secondary mt-0.5">
+          {bill.provider ? `${bill.provider} • ` : ''}
+          Repeats {bill.frequency.replace('_', ' ')}
+        </p>
+        {bill.next_due_date && (
+          <p className="text-xs text-secondary mt-1">
+            Next due:{' '}
+            <span className="text-foreground font-medium">
+              {formatUkDate(bill.next_due_date)}
+            </span>
+          </p>
+        )}
+      </div>
+      <div className="text-right space-y-2">
+        <span className="text-base font-semibold block tabular-nums">
+          {formatPenceToPounds(bill.amount_pence)}
+        </span>
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            onClick={() => onPay(bill.id)}
+            variant="secondary"
+            className="text-xs px-3 py-1"
+          >
+            Mark paid
+          </Button>
+          <button
+            onClick={() => onDelete(bill.id)}
+            className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function BillsPage() {
-  const [bills, setBills] = React.useState<Bill[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { data, isLoading, error } = useApiQuery<Bill[]>(queryKeys.bills, '/api/v1/bills');
+  const bills = data ?? [];
+  const [actionError, setActionError] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
 
-  // Form state
   const [name, setName] = React.useState('');
   const [provider, setProvider] = React.useState('');
   const [amountPounds, setAmountPounds] = React.useState('');
   const [frequency, setFrequency] = React.useState('monthly');
   const [nextDueDate, setNextDueDate] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
-
-  const loadBills = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiFetch<Bill[]>('/api/v1/bills');
-      setBills(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load bills');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  React.useEffect(() => {
-    loadBills();
-  }, []);
 
   const openCreateDialog = () => {
     setFormError(null);
@@ -55,7 +90,7 @@ export default function BillsPage() {
     setFormError(null);
     try {
       const amountPence = amountPounds ? Math.round(parseFloat(amountPounds) * 100) : null;
-      const newBill = await apiFetch<Bill>('/api/v1/bills', {
+      await apiFetch('/api/v1/bills', {
         method: 'POST',
         body: JSON.stringify({
           name: name.trim(),
@@ -65,7 +100,7 @@ export default function BillsPage() {
           next_due_date: nextDueDate || null,
         }),
       });
-      setBills((prev) => [...prev, newBill]);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.bills });
       setDialogOpen(false);
       setName('');
       setProvider('');
@@ -79,46 +114,59 @@ export default function BillsPage() {
   };
 
   const payBill = async (id: string) => {
-    setError(null);
+    setActionError(null);
     try {
-      const updated = await apiFetch<Bill>(`/api/v1/bills/${id}/pay`, { method: 'POST' });
-      setBills((prev) =>
-        updated.is_active
-          ? prev.map((bill) => (bill.id === id ? updated : bill))
-          : prev.filter((bill) => bill.id !== id)
-      );
+      await apiFetch(`/api/v1/bills/${id}/pay`, { method: 'POST' });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.bills });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update bill');
+      setActionError(err instanceof Error ? err.message : 'Failed to update bill');
     }
   };
 
   const deleteBill = async (id: string) => {
     if (!window.confirm('Delete this bill? This cannot be undone.')) return;
-    setError(null);
+    setActionError(null);
     try {
       await apiFetch(`/api/v1/bills/${id}`, { method: 'DELETE' });
-      setBills((prev) => prev.filter((bill) => bill.id !== id));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.bills });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete bill');
+      setActionError(err instanceof Error ? err.message : 'Failed to delete bill');
     }
   };
 
-  if (loading) {
+  if (isLoading && !data) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold tracking-tight">Household bills</h1>
-        <div className="p-8 text-center text-sm text-secondary border border-border rounded-card">
-          Loading household bills and recurring commitments...
+        <h1 className="text-3xl font-semibold tracking-tight">Household bills</h1>
+        <div className="p-8 text-sm text-secondary border border-border rounded-card">
+          Loading household bills...
         </div>
       </div>
     );
   }
 
+  if (error && !data) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-3xl font-semibold tracking-tight">Household bills</h1>
+        <div role="alert" className="p-4 border border-destructive text-destructive rounded-card text-sm">
+          {error instanceof Error ? error.message : 'Could not load bills.'}
+        </div>
+      </div>
+    );
+  }
+
+  const today = londonDateString();
+  const soon = addDays(today, 7);
+  const dueSoon = bills.filter((bill) => bill.next_due_date && bill.next_due_date <= soon);
+  const later = bills.filter((bill) => bill.next_due_date && bill.next_due_date > soon);
+  const noDate = bills.filter((bill) => !bill.next_due_date);
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Household bills</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Household bills</h1>
           <p className="text-sm text-secondary">
             Shared utilities, council tax, rent, and household subscriptions.
           </p>
@@ -126,9 +174,9 @@ export default function BillsPage() {
         <Button onClick={openCreateDialog}>Add bill</Button>
       </div>
 
-      {error && (
+      {actionError && (
         <div role="alert" className="p-3 text-sm rounded-card border border-destructive text-destructive">
-          {error}
+          {actionError}
         </div>
       )}
 
@@ -140,48 +188,30 @@ export default function BillsPage() {
           onAction={openCreateDialog}
         />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {bills.map((bill) => (
-            <Card key={bill.id} className="border-2">
-              <CardContent>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="font-semibold text-base">{bill.name}</h3>
-                    <p className="text-xs text-secondary mt-0.5">
-                      {bill.provider ? `${bill.provider} • ` : ''}
-                      Repeats {bill.frequency}
-                    </p>
-                    {bill.next_due_date && (
-                      <p className="text-xs text-secondary mt-1">
-                        Next due:{' '}
-                        <span className="text-foreground font-medium">
-                          {formatUkDate(bill.next_due_date)}
-                        </span>
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right space-y-2">
-                    <span className="text-base font-bold block">
-                      {formatPenceToPounds(bill.amount_pence)}
-                    </span>
-                    <Button
-                      onClick={() => payBill(bill.id)}
-                      variant="secondary"
-                      className="text-xs px-3 py-1"
-                    >
-                      Mark paid
-                    </Button>
-                    <button
-                      onClick={() => deleteBill(bill.id)}
-                      className="block ml-auto text-xs text-secondary hover:text-destructive"
-                    >
-                      Remove
-                    </button>
-                  </div>
+        <div className="space-y-8">
+          {[
+            { title: 'Due soon', items: dueSoon },
+            { title: 'Later', items: later },
+            { title: 'No date', items: noDate },
+          ]
+            .filter((group) => group.items.length > 0)
+            .map((group) => (
+              <section key={group.title} className="space-y-3">
+                <h2 className="text-lg font-semibold border-b border-border pb-2">
+                  {group.title}
+                </h2>
+                <div className="space-y-2">
+                  {group.items.map((bill) => (
+                    <BillRow
+                      key={bill.id}
+                      bill={bill}
+                      onPay={payBill}
+                      onDelete={deleteBill}
+                    />
+                  ))}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+              </section>
+            ))}
         </div>
       )}
 

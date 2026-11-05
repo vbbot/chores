@@ -1,12 +1,15 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTheme } from '@/components/theme-provider';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { apiFetch, resolveAbsoluteApiUrl } from '@/lib/api';
+import { useApiQuery } from '@/lib/query';
+import { queryKeys } from '@/lib/query-keys';
 import { useAuth } from '@/lib/auth';
 import { getWebPushToken } from '@/lib/firebase';
 import { Household, Room, User } from '@/lib/types';
@@ -14,11 +17,20 @@ import { Household, Room, User } from '@/lib/types';
 export default function SettingsPage() {
   const { user, logout } = useAuth();
   const { mode, setMode } = useTheme();
-  const [household, setHousehold] = React.useState<Household | null>(null);
-  const [members, setMembers] = React.useState<User[]>([]);
-  const [loadError, setLoadError] = React.useState<string | null>(null);
-  const [copiedFeed, setCopiedFeed] = React.useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { data: householdData, error: householdError } = useApiQuery<Household>(
+    queryKeys.household,
+    '/api/v1/households'
+  );
+  const { data: memberData, error: membersError } = useApiQuery<User[]>(
+    queryKeys.members,
+    '/api/v1/households/members'
+  );
+  const household = householdData ?? null;
+  const members = memberData ?? [];
+  const loadError = householdError ?? membersError;
   const [copyError, setCopyError] = React.useState<string | null>(null);
+  const [copiedFeed, setCopiedFeed] = React.useState<string | null>(null);
   const [pushStatus, setPushStatus] = React.useState<string | null>(null);
   const [roomDialogOpen, setRoomDialogOpen] = React.useState(false);
   const [editingRoom, setEditingRoom] = React.useState<Room | null>(null);
@@ -29,20 +41,6 @@ export default function SettingsPage() {
 
   React.useEffect(() => {
     setOrigin(window.location.origin);
-  }, []);
-
-  React.useEffect(() => {
-    Promise.all([
-      apiFetch<Household>('/api/v1/households'),
-      apiFetch<User[]>('/api/v1/households/members'),
-    ])
-      .then(([householdData, memberData]) => {
-        setHousehold(householdData);
-        setMembers(memberData);
-      })
-      .catch((err) => {
-        setLoadError(err instanceof Error ? err.message : 'Failed to load household settings');
-      });
   }, []);
 
   const rooms = household?.rooms ?? [];
@@ -72,28 +70,17 @@ export default function SettingsPage() {
     setRoomError(null);
     try {
       if (editingRoom) {
-        const updated = await apiFetch<Room>(`/api/v1/households/rooms/${editingRoom.id}`, {
+        await apiFetch(`/api/v1/households/rooms/${editingRoom.id}`, {
           method: 'PUT',
           body: JSON.stringify({ name: roomName.trim() }),
         });
-        setHousehold((previous) =>
-          previous
-            ? {
-                ...previous,
-                rooms: previous.rooms.map((room) =>
-                  room.id === updated.id ? updated : room
-                ),
-              }
-            : previous
-        );
+        await queryClient.invalidateQueries({ queryKey: queryKeys.household });
       } else {
-        const created = await apiFetch<Room>('/api/v1/households/rooms', {
+        await apiFetch('/api/v1/households/rooms', {
           method: 'POST',
           body: JSON.stringify({ name: roomName.trim(), room_type: 'other' }),
         });
-        setHousehold((previous) =>
-          previous ? { ...previous, rooms: [...previous.rooms, created] } : previous
-        );
+        await queryClient.invalidateQueries({ queryKey: queryKeys.household });
       }
       setRoomDialogOpen(false);
     } catch (err) {
@@ -110,11 +97,7 @@ export default function SettingsPage() {
     setRoomError(null);
     try {
       await apiFetch(`/api/v1/households/rooms/${room.id}`, { method: 'DELETE' });
-      setHousehold((previous) =>
-        previous
-          ? { ...previous, rooms: previous.rooms.filter((item) => item.id !== room.id) }
-          : previous
-      );
+      await queryClient.invalidateQueries({ queryKey: queryKeys.household });
     } catch (err) {
       setRoomError(err instanceof Error ? err.message : 'Could not delete this room.');
     }
@@ -174,7 +157,7 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Household settings</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Household settings</h1>
         <p className="text-sm text-secondary">
           Manage rooms, calendar feeds, notifications, and household members.
         </p>
@@ -182,12 +165,12 @@ export default function SettingsPage() {
 
       {loadError && (
         <div role="alert" className="p-3 text-sm rounded-card border border-destructive text-destructive">
-          {loadError}
+          {loadError instanceof Error ? loadError.message : 'Failed to load household settings'}
         </div>
       )}
 
       {/* Household & Invite */}
-      <Card className="border-2">
+      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
         <CardHeader>
           <CardTitle className="text-base">Household</CardTitle>
         </CardHeader>
@@ -208,7 +191,7 @@ export default function SettingsPage() {
       </Card>
 
       {/* Rooms */}
-      <Card className="border-2">
+      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <CardTitle className="text-base">Rooms ({rooms.length})</CardTitle>
@@ -260,7 +243,7 @@ export default function SettingsPage() {
       </Card>
 
       {/* Appearance */}
-      <Card className="border-2">
+      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
         <CardHeader>
           <CardTitle className="text-base">Appearance</CardTitle>
         </CardHeader>
@@ -272,9 +255,9 @@ export default function SettingsPage() {
                 type="button"
                 onClick={() => setMode(value)}
                 aria-pressed={mode === value}
-                className={`flex-1 min-h-[44px] border rounded-card text-sm font-medium capitalize ${
+                className={`flex-1 min-h-[44px] border rounded-card text-sm font-semibold capitalize ${
                   mode === value
-                    ? 'border-foreground bg-foreground text-background'
+                    ? 'border-accent text-accent bg-surface'
                     : 'border-border text-foreground hover:bg-surface'
                 }`}
               >
@@ -289,7 +272,7 @@ export default function SettingsPage() {
       </Card>
 
       {/* Household Members */}
-      <Card className="border-2">
+      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
         <CardHeader>
           <CardTitle className="text-base">Members ({members.length})</CardTitle>
         </CardHeader>
@@ -311,7 +294,7 @@ export default function SettingsPage() {
       </Card>
 
       {/* Calendar Feeds (iCal) */}
-      <Card className="border-2">
+      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
         <CardHeader>
           <CardTitle className="text-base">Calendar feeds (iCal)</CardTitle>
           <p className="text-xs text-secondary">
@@ -378,7 +361,7 @@ export default function SettingsPage() {
       </Card>
 
       {/* Push Notifications */}
-      <Card className="border-2">
+      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
         <CardHeader>
           <CardTitle className="text-base">Device notifications</CardTitle>
         </CardHeader>

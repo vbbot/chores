@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './api';
 import { User } from './types';
 
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -28,6 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(data);
     } catch {
       setUser(null);
+      queryClient.clear();
     } finally {
       setLoading(false);
     }
@@ -40,6 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Ignore network errors on logout
     }
     setUser(null);
+    queryClient.clear();
     window.location.href = '/login';
   };
 

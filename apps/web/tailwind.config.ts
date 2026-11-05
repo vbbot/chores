@@ -16,14 +16,23 @@ const config: Config = {
         secondary: "var(--secondary)",
         destructive: "var(--destructive)",
         success: "var(--success)",
+        accent: "var(--accent)",
+        "accent-foreground": "var(--accent-foreground)",
       },
       borderRadius: {
-        card: "6px",
-        btn: "8px",
+        card: "4px",
+        btn: "4px",
+        sheet: "6px",
       },
       borderWidth: {
         DEFAULT: "1px",
         heavy: "2px",
+      },
+      fontFamily: {
+        sans: ["var(--font-source-sans)", "system-ui", "sans-serif"],
+      },
+      transitionTimingFunction: {
+        zune: "cubic-bezier(0.2, 0.8, 0.2, 1)",
       },
     },
   },

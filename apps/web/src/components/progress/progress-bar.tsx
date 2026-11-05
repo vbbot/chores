@@ -13,9 +13,9 @@ export function ProgressBar({ value, label }: ProgressBarProps) {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={percent}
-      className="h-2 border border-foreground rounded-card overflow-hidden bg-background"
+      className="h-2 border border-border rounded-card overflow-hidden bg-background"
     >
-      <div className="h-full bg-foreground" style={{ width: `${percent}%` }} />
+      <div className="h-full bg-accent transition-[width] duration-200 ease-zune" style={{ width: `${percent}%` }} />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AltchaWidget } from '@/components/altcha-widget';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -59,10 +60,13 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <Card className="w-full max-w-sm">
+    <div className="relative min-h-screen flex items-center justify-center p-4 bg-background">
+      <div className="absolute top-3 right-3">
+        <ThemeToggle />
+      </div>
+      <Card className="w-full max-w-sm border-heavy border-foreground">
         <CardHeader>
-          <CardTitle className="text-xl">Create your account</CardTitle>
+          <CardTitle className="text-3xl font-semibold tracking-tight">Create your account</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

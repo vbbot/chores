@@ -2,42 +2,38 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { apiFetch } from '@/lib/api';
+import { formatUkDate, londonDateString } from '@/lib/dates';
+import { useApiQuery } from '@/lib/query';
+import { queryKeys } from '@/lib/query-keys';
 import { CalendarEvent } from '@/lib/types';
 
+function timeLabel(value: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
 export default function CalendarPage() {
-  const [events, setEvents] = React.useState<CalendarEvent[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { data, isLoading, error } = useApiQuery<CalendarEvent[]>(
+    queryKeys.calendar,
+    '/api/v1/calendar/events'
+  );
+  const events = data ?? [];
+  const [actionError, setActionError] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
-
-  // Form
   const [title, setTitle] = React.useState('');
   const [startTime, setStartTime] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
-
-  const loadEvents = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiFetch<CalendarEvent[]>('/api/v1/calendar/events');
-      setEvents(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load calendar events');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  React.useEffect(() => {
-    loadEvents();
-  }, []);
 
   const openCreateDialog = () => {
     setFormError(null);
@@ -50,16 +46,14 @@ export default function CalendarPage() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const newEvent = await apiFetch<CalendarEvent>('/api/v1/calendar/events', {
+      await apiFetch('/api/v1/calendar/events', {
         method: 'POST',
         body: JSON.stringify({
           title: title.trim(),
           start_time: new Date(startTime).toISOString(),
         }),
       });
-      setEvents((prev) =>
-        [...prev, newEvent].sort((a, b) => a.start_time.localeCompare(b.start_time))
-      );
+      await queryClient.invalidateQueries({ queryKey: queryKeys.calendar });
       setDialogOpen(false);
       setTitle('');
       setStartTime('');
@@ -72,48 +66,67 @@ export default function CalendarPage() {
 
   const deleteEvent = async (id: string) => {
     if (!window.confirm('Delete this calendar event?')) return;
-    setError(null);
+    setActionError(null);
     try {
       await apiFetch(`/api/v1/calendar/events/${id}`, { method: 'DELETE' });
-      setEvents((prev) => prev.filter((event) => event.id !== id));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.calendar });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete event');
+      setActionError(err instanceof Error ? err.message : 'Failed to delete event');
     }
   };
 
-  if (loading) {
+  if (isLoading && !data) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold tracking-tight">Shared calendar</h1>
-        <div className="p-8 text-center text-sm text-secondary border border-border rounded-card">
+        <h1 className="text-3xl font-semibold tracking-tight">Shared calendar</h1>
+        <div className="p-8 text-sm text-secondary border border-border rounded-card">
           Loading household events...
         </div>
       </div>
     );
   }
 
+  if (error && !data) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-3xl font-semibold tracking-tight">Shared calendar</h1>
+        <div role="alert" className="p-4 border border-destructive text-destructive rounded-card text-sm">
+          {error instanceof Error ? error.message : 'Could not load events.'}
+        </div>
+      </div>
+    );
+  }
+
+  const today = londonDateString();
+  const groups = new Map<string, CalendarEvent[]>();
+  events.forEach((event) => {
+    const date = londonDateString(new Date(event.start_time));
+    groups.set(date, [...(groups.get(date) ?? []), event]);
+  });
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Shared calendar</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Shared calendar</h1>
           <p className="text-sm text-secondary">
-            Household schedule, visits, and chore reminders.
+            Household schedule, visits, and shared commitments.
           </p>
         </div>
-        <div className="flex space-x-2">
-          <Link href="/settings">
-            <Button variant="secondary" className="text-xs">
-              iCal Feed
-            </Button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/settings"
+            className="text-sm text-secondary underline hover:text-foreground min-h-[44px] inline-flex items-center"
+          >
+            iCal feed
           </Link>
           <Button onClick={openCreateDialog}>Add event</Button>
         </div>
       </div>
 
-      {error && (
+      {(actionError || error) && (
         <div role="alert" className="p-3 text-sm rounded-card border border-destructive text-destructive">
-          {error}
+          {actionError ?? (error instanceof Error ? error.message : 'Could not load events.')}
         </div>
       )}
 
@@ -125,27 +138,37 @@ export default function CalendarPage() {
           onAction={openCreateDialog}
         />
       ) : (
-        <div className="space-y-2">
-          {events.map((ev) => (
-            <Card key={ev.id} className="border-2">
-              <CardContent className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-base">{ev.title}</h3>
-                  <p className="text-xs text-secondary mt-0.5">
-                    {new Date(ev.start_time).toLocaleString('en-GB', {
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                    })}
-                  </p>
-                </div>
-                <button
-                  onClick={() => deleteEvent(ev.id)}
-                  className="text-xs text-secondary hover:text-destructive p-1"
+        <div className="space-y-7">
+          {Array.from(groups.entries()).map(([date, items]) => (
+            <section key={date} className="space-y-2">
+              <h2
+                className={`text-sm font-semibold border-b border-border pb-2 ${
+                  date === today ? 'text-accent' : 'text-foreground'
+                }`}
+              >
+                {date === today ? 'Today, ' : ''}
+                {formatUkDate(date)}
+              </h2>
+              {items.map((event) => (
+                <div
+                  key={event.id}
+                  className="border border-border rounded-card p-3 flex items-center justify-between gap-3"
                 >
-                  Remove
-                </button>
-              </CardContent>
-            </Card>
+                  <div>
+                    <h3 className="font-semibold text-base">{event.title}</h3>
+                    <p className="text-xs text-secondary mt-0.5">
+                      {timeLabel(event.start_time)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => deleteEvent(event.id)}
+                    className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </section>
           ))}
         </div>
       )}
@@ -175,7 +198,7 @@ export default function CalendarPage() {
 
           <div>
             <label htmlFor="ev_start" className="block text-sm font-medium mb-1">
-              Date & Time
+              Date and time
             </label>
             <Input
               id="ev_start"

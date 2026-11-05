@@ -33,6 +33,8 @@ function resolve(mode: ThemeMode): ResolvedTheme {
 
 function applyTheme(theme: ResolvedTheme) {
   const root = document.documentElement;
+  root.classList.add('theme-changing');
+  window.setTimeout(() => root.classList.remove('theme-changing'), 180);
   root.dataset.theme = theme;
   root.style.colorScheme = theme;
 

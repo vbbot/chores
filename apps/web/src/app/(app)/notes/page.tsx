@@ -1,74 +1,65 @@
 'use client';
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { apiFetch } from '@/lib/api';
+import { useApiQuery } from '@/lib/query';
+import { queryKeys } from '@/lib/query-keys';
 import { Note } from '@/lib/types';
 
 export default function NotesPage() {
-  const [notes, setNotes] = React.useState<Note[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { data, isLoading, error } = useApiQuery<Note[]>(queryKeys.notes, '/api/v1/notes');
+  const notes = data ?? [];
+  const [actionError, setActionError] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [copiedId, setCopiedId] = React.useState<string | null>(null);
 
-  // Form
   const [title, setTitle] = React.useState('');
   const [content, setContent] = React.useState('');
   const [isPinned, setIsPinned] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
-  const loadNotes = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiFetch<Note[]>('/api/v1/notes');
-      setNotes(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load notes');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  React.useEffect(() => {
-    loadNotes();
-  }, []);
-
-  const sortNotes = (items: Note[]) =>
-    [...items].sort((a, b) => {
-      if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
-      return b.updated_at.localeCompare(a.updated_at);
-    });
-
   const openCreateDialog = () => {
+    setEditingId(null);
+    setTitle('');
+    setContent('');
+    setIsPinned(false);
     setFormError(null);
     setDialogOpen(true);
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const openEditDialog = (note: Note) => {
+    setEditingId(note.id);
+    setTitle(note.title);
+    setContent(note.content);
+    setIsPinned(note.is_pinned);
+    setFormError(null);
+    setDialogOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
     setSubmitting(true);
     setFormError(null);
     try {
-      const newNote = await apiFetch<Note>('/api/v1/notes', {
-        method: 'POST',
+      await apiFetch(editingId ? `/api/v1/notes/${editingId}` : '/api/v1/notes', {
+        method: editingId ? 'PUT' : 'POST',
         body: JSON.stringify({
           title: title.trim(),
           content: content.trim(),
           is_pinned: isPinned,
         }),
       });
-      setNotes((prev) => sortNotes([newNote, ...prev]));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.notes });
       setDialogOpen(false);
-      setTitle('');
-      setContent('');
-      setIsPinned(false);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to save note');
     } finally {
@@ -76,23 +67,45 @@ export default function NotesPage() {
     }
   };
 
-  const deleteNote = async (id: string) => {
-    if (!window.confirm('Delete this note? This cannot be undone.')) return;
-    setError(null);
+  const copyNote = async (note: Note) => {
+    setActionError(null);
     try {
-      await apiFetch(`/api/v1/notes/${id}`, { method: 'DELETE' });
-      setNotes((prev) => prev.filter((note) => note.id !== id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete note');
+      await navigator.clipboard.writeText(note.content || note.title);
+      setCopiedId(note.id);
+      window.setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      setActionError('Could not copy this note.');
     }
   };
 
-  if (loading) {
+  const deleteNote = async (id: string) => {
+    if (!window.confirm('Delete this note? This cannot be undone.')) return;
+    setActionError(null);
+    try {
+      await apiFetch(`/api/v1/notes/${id}`, { method: 'DELETE' });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.notes });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to delete note');
+    }
+  };
+
+  if (isLoading && !data) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold tracking-tight">Household notes</h1>
-        <div className="p-8 text-center text-sm text-secondary border border-border rounded-card">
+        <h1 className="text-3xl font-semibold tracking-tight">Household notes</h1>
+        <div className="p-8 text-sm text-secondary border border-border rounded-card">
           Loading household notes...
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-3xl font-semibold tracking-tight">Household notes</h1>
+        <div role="alert" className="p-4 border border-destructive text-destructive rounded-card text-sm">
+          {error instanceof Error ? error.message : 'Could not load notes.'}
         </div>
       </div>
     );
@@ -100,19 +113,19 @@ export default function NotesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Household notes</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Household notes</h1>
           <p className="text-sm text-secondary">
-            Shared info: Wi-Fi codes, meter readings, council contacts, appliance info.
+            Wi-Fi codes, meter readings, council contacts, and appliance info.
           </p>
         </div>
         <Button onClick={openCreateDialog}>Add note</Button>
       </div>
 
-      {error && (
+      {(actionError || error) && (
         <div role="alert" className="p-3 text-sm rounded-card border border-destructive text-destructive">
-          {error}
+          {actionError ?? (error instanceof Error ? error.message : 'Could not load notes.')}
         </div>
       )}
 
@@ -124,39 +137,55 @@ export default function NotesPage() {
           onAction={openCreateDialog}
         />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
           {notes.map((note) => (
-            <Card key={note.id} className="border-2">
-              <CardContent>
-                <div className="flex items-start justify-between">
-                  <h3 className="font-semibold text-base flex items-center gap-1.5">
+            <div key={note.id} className="border border-border rounded-card p-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-base flex items-center gap-2">
                     {note.is_pinned && (
-                      <span className="text-xs bg-foreground text-background px-1.5 py-0.5 rounded-card">
-                        Pinned
-                      </span>
+                      <span className="text-xs font-semibold text-accent">Pinned</span>
                     )}
                     {note.title}
                   </h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => copyNote(note)}
+                    className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1"
+                  >
+                    {copiedId === note.id ? 'Copied' : 'Copy'}
+                  </button>
+                  <button
+                    onClick={() => openEditDialog(note)}
+                    className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1"
+                  >
+                    Edit
+                  </button>
                   <button
                     onClick={() => deleteNote(note.id)}
-                    className="text-xs text-secondary hover:text-destructive p-1"
+                    className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
                   >
                     Delete
                   </button>
                 </div>
-                {note.content && (
-                  <p className="mt-2 whitespace-pre-wrap text-xs p-2 bg-surface rounded-card border border-border">
-                    {note.content}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+              </div>
+              {note.content && (
+                <p className="mt-2 whitespace-pre-wrap text-sm p-2 bg-surface rounded-card border border-border">
+                  {note.content}
+                </p>
+              )}
+            </div>
           ))}
         </div>
       )}
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title="Add household note">
-        <form onSubmit={handleCreate} className="space-y-4">
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        title={editingId ? 'Edit household note' : 'Add household note'}
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
           {formError && (
             <div
               role="alert"
@@ -174,13 +203,13 @@ export default function NotesPage() {
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Wi-Fi Password & Meter locations"
+              placeholder="e.g. Wi-Fi Password and Meter Locations"
             />
           </div>
 
           <div>
             <label htmlFor="note_content" className="block text-sm font-medium mb-1">
-              Details / Content
+              Details
             </label>
             <textarea
               id="note_content"
@@ -188,7 +217,7 @@ export default function NotesPage() {
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="Enter details..."
-              className="w-full px-3 py-2 border border-border rounded-card bg-background text-sm"
+              className="w-full px-3 py-2 border border-border rounded-card bg-background text-base"
             />
           </div>
 

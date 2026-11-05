@@ -152,6 +152,79 @@ export async function createChoreTemplate(
   return asTemplate(id, template);
 }
 
+export async function updateChoreTemplate(
+  householdId: string,
+  templateId: string,
+  input: Partial<ChoreTemplateInput> & { is_active?: boolean }
+): Promise<ChoreTemplate> {
+  const ref = householdCollection(householdId, 'choreTemplates').doc(templateId);
+  const doc = await ref.get();
+  if (!doc.exists) throw new ApiError('Chore template not found', 404);
+  const current = asTemplate(doc.id, doc.data() as Record<string, unknown>);
+
+  const patch: Record<string, unknown> = {};
+  if (input.name !== undefined) patch.name = input.name.trim();
+  if (input.room_id !== undefined) patch.room_id = input.room_id;
+  if (input.description !== undefined) patch.description = input.description;
+  if (input.frequency !== undefined) patch.frequency = input.frequency;
+  if (input.frequency_days !== undefined) patch.frequency_days = input.frequency_days;
+  if (input.estimated_minutes !== undefined) patch.estimated_minutes = input.estimated_minutes;
+  if (input.priority !== undefined) patch.priority = input.priority;
+  if (input.is_active !== undefined) patch.is_active = input.is_active;
+
+  const scheduleChanged =
+    (input.frequency !== undefined && input.frequency !== current.frequency) ||
+    (input.frequency_days !== undefined && input.frequency_days !== current.frequency_days);
+
+  if (scheduleChanged) {
+    patch.next_due_date = calculateNextDueDate(
+      input.frequency ?? current.frequency,
+      input.frequency_days ?? current.frequency_days,
+      londonToday()
+    );
+  }
+
+  await ref.update(patch);
+  const updated = asTemplate(templateId, (await ref.get()).data() as Record<string, unknown>);
+
+  if (scheduleChanged || input.is_active === true || input.is_active === false) {
+    const future = await householdCollection(householdId, 'choreInstances').get();
+    const pendingFuture = future.docs.filter((instance) => {
+      const data = instance.data();
+      return (
+        data.template_id === templateId &&
+        data.status === 'pending' &&
+        String(data.due_date) > londonToday()
+      );
+    });
+    await Promise.all(pendingFuture.map((instance) => instance.ref.delete()));
+
+    if (updated.is_active) {
+      const due = updated.next_due_date && updated.next_due_date >= londonToday()
+        ? updated.next_due_date
+        : londonToday();
+      await createFutureInstance(householdId, updated, due);
+    }
+  }
+
+  return updated;
+}
+
+export async function deleteChoreTemplate(
+  householdId: string,
+  templateId: string
+): Promise<void> {
+  const ref = householdCollection(householdId, 'choreTemplates').doc(templateId);
+  if (!(await ref.get()).exists) throw new ApiError('Chore template not found', 404);
+
+  const instances = await householdCollection(householdId, 'choreInstances').get();
+  const pending = instances.docs.filter(
+    (doc) => doc.data().template_id === templateId && doc.data().status === 'pending'
+  );
+  await Promise.all(pending.map((doc) => doc.ref.delete()));
+  await ref.delete();
+}
+
 export async function listChoreInstances(
   householdId: string,
   filter: { status?: string; due_date?: string; due_before?: string }

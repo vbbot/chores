@@ -1,1 +1,1 @@
-export { dueLabel, formatUkDate, londonDateString } from '@chores/domain';
+export { addDays, dueLabel, formatUkDate, londonDateString } from '@chores/domain';

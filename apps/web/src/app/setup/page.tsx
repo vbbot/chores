@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -142,19 +143,33 @@ export default function SetupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <Card className="w-full max-w-lg">
+    <div className="relative min-h-screen flex items-center justify-center p-4 bg-background">
+      <div className="absolute top-3 right-3">
+        <ThemeToggle />
+      </div>
+      <Card className="w-full max-w-lg border-heavy border-foreground">
         <CardHeader>
-          <div className="text-xs font-semibold uppercase tracking-wider text-secondary mb-1">
-            Setup Step {step} of 3
+          <div className="flex gap-2 mb-3" aria-hidden="true">
+            {[1, 2, 3].map((index) => (
+              <span
+                key={index}
+                className={`h-1 flex-1 rounded-card ${
+                  index <= step ? 'bg-accent' : 'bg-border'
+                }`}
+              />
+            ))}
           </div>
-          <CardTitle className="text-xl">
+          <div className="text-xs font-semibold text-secondary">
+            Step {step} of 3
+          </div>
+          <CardTitle className="text-3xl font-semibold tracking-tight">
             {step === 1 && 'Configure your home layout'}
             {step === 2 && 'Set up bin collections'}
             {step === 3 && 'Invite your household partner'}
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <div key={step} className="step-enter">
           {error && (
             <div
               role="alert"
@@ -288,6 +303,7 @@ export default function SetupPage() {
               </div>
             </div>
           )}
+          </div>
         </CardContent>
       </Card>
     </div>
