@@ -7,8 +7,8 @@ import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { apiFetch } from '@/lib/api';
-import { dueLabel, londonDateString } from '@/lib/dates';
-import { ChoreInstance, ChoreTemplate, Room, User } from '@/lib/types';
+import { dueLabel, formatUkDate, londonDateString } from '@/lib/dates';
+import { ChoreInstance, ChoreSuggestion, ChoreTemplate, Room, User } from '@/lib/types';
 
 const FREQUENCY_LABELS: Record<string, string> = {
   daily: 'Daily',
@@ -19,11 +19,15 @@ const FREQUENCY_LABELS: Record<string, string> = {
   yearly: 'Yearly',
 };
 
+function frequencyName(frequency: string): string {
+  return FREQUENCY_LABELS[frequency] ?? frequency;
+}
+
 function frequencyLabel(template: ChoreTemplate): string {
   if (template.frequency === 'every_n_days') {
     return `Every ${template.frequency_days ?? 3} days`;
   }
-  return FREQUENCY_LABELS[template.frequency] ?? template.frequency;
+  return frequencyName(template.frequency);
 }
 
 export default function ChoresPage() {
@@ -32,9 +36,11 @@ export default function ChoresPage() {
   const [instances, setInstances] = React.useState<ChoreInstance[]>([]);
   const [rooms, setRooms] = React.useState<Room[]>([]);
   const [members, setMembers] = React.useState<User[]>([]);
+  const [suggestions, setSuggestions] = React.useState<ChoreSuggestion[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
@@ -54,20 +60,31 @@ export default function ChoresPage() {
     setInstances(data);
   };
 
+  const refreshRelated = async () => {
+    const [tpls, ideas] = await Promise.all([
+      apiFetch<ChoreTemplate[]>('/api/v1/chores/templates'),
+      apiFetch<ChoreSuggestion[]>('/api/v1/suggestions'),
+    ]);
+    setTemplates(tpls);
+    setSuggestions(ideas);
+  };
+
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [tpls, hh, membersData, pending] = await Promise.all([
+      const [tpls, hh, membersData, pending, ideas] = await Promise.all([
         apiFetch<ChoreTemplate[]>('/api/v1/chores/templates'),
         apiFetch<{ rooms: Room[] }>('/api/v1/households'),
         apiFetch<User[]>('/api/v1/households/members'),
         apiFetch<ChoreInstance[]>(`/api/v1/chores/instances?status=pending&due_before=${today}`),
+        apiFetch<ChoreSuggestion[]>('/api/v1/suggestions'),
       ]);
       setTemplates(tpls);
       setRooms(hh.rooms || []);
       setMembers(membersData);
       setInstances(pending);
+      setSuggestions(ideas);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load chores');
     } finally {
@@ -80,8 +97,21 @@ export default function ChoresPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openCreateDialog = () => {
+  const openCreateDialog = (suggestion?: ChoreSuggestion) => {
     setFormError(null);
+    if (suggestion) {
+      setName(suggestion.name);
+      setRoomId(suggestion.room_id ?? '');
+      setFrequency(suggestion.frequency);
+      setEstimatedMinutes(suggestion.estimated_minutes);
+      setPriority(suggestion.priority);
+    } else {
+      setName('');
+      setRoomId('');
+      setFrequency('weekly');
+      setEstimatedMinutes(15);
+      setPriority('medium');
+    }
     setDialogOpen(true);
   };
 
@@ -106,6 +136,7 @@ export default function ChoresPage() {
       });
       setTemplates((prev) => [...prev, newTemplate]);
       await loadInstances();
+      setSuggestions((prev) => prev.filter((idea) => idea.name !== newTemplate.name));
       setDialogOpen(false);
       setName('');
     } catch (err) {
@@ -119,11 +150,20 @@ export default function ChoresPage() {
     setBusyId(id);
     setActionError(null);
     try {
-      await apiFetch(`/api/v1/chores/instances/${id}/complete`, {
+      const result = await apiFetch<{
+        xp_awarded: number;
+        streak_current: number;
+      }>(`/api/v1/chores/instances/${id}/complete`, {
         method: 'POST',
         body: JSON.stringify({}),
       });
       setInstances((prev) => prev.filter((instance) => instance.id !== id));
+      setStatusMessage(
+        result.streak_current > 1
+          ? `Done. +${result.xp_awarded} XP. ${result.streak_current} on time in a row.`
+          : `Done. +${result.xp_awarded} XP.`
+      );
+      await refreshRelated();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Could not mark this chore done.');
     } finally {
@@ -140,6 +180,8 @@ export default function ChoresPage() {
         body: JSON.stringify({}),
       });
       setInstances((prev) => prev.filter((instance) => instance.id !== id));
+      setStatusMessage('Chore skipped.');
+      await refreshRelated();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Could not skip this chore.');
     } finally {
@@ -167,6 +209,19 @@ export default function ChoresPage() {
     }
   };
 
+  const dismissSuggestion = async (id: string) => {
+    setActionError(null);
+    try {
+      await apiFetch('/api/v1/suggestions/dismiss', {
+        method: 'POST',
+        body: JSON.stringify({ id }),
+      });
+      setSuggestions((prev) => prev.filter((idea) => idea.id !== id));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not dismiss this suggestion.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -185,7 +240,7 @@ export default function ChoresPage() {
           <h1 className="text-2xl font-bold tracking-tight">Chores</h1>
           <p className="text-sm text-secondary">Recurring schedule with fair delegation.</p>
         </div>
-        <Button onClick={openCreateDialog}>Add chore</Button>
+        <Button onClick={() => openCreateDialog()}>Add chore</Button>
       </div>
 
       {error && (
@@ -197,6 +252,11 @@ export default function ChoresPage() {
         <div role="alert" className="p-3 text-sm rounded-card border border-destructive text-destructive">
           {actionError}
         </div>
+      )}
+      {statusMessage && (
+        <p role="status" className="p-3 text-sm rounded-card border border-foreground bg-surface font-medium">
+          {statusMessage}
+        </p>
       )}
 
       <section className="space-y-3">
@@ -289,6 +349,49 @@ export default function ChoresPage() {
         )}
       </section>
 
+      {suggestions.length > 0 && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold">Suggested for your home</h2>
+            <p className="text-xs text-secondary">
+              Based on your rooms, routine, and the time of year.
+            </p>
+          </div>
+          <div className="space-y-2">
+            {suggestions.map((suggestion) => (
+              <div
+                key={suggestion.id}
+                className="p-3 border border-border rounded-card flex flex-wrap items-start justify-between gap-3"
+              >
+                <div className="min-w-[12rem] flex-1">
+                  <h3 className="font-medium text-sm">{suggestion.name}</h3>
+                  <p className="text-xs text-secondary mt-0.5">{suggestion.reason}</p>
+                  <p className="text-xs text-secondary mt-1">
+                    {suggestion.room_name ? `${suggestion.room_name} • ` : ''}
+                    {frequencyName(suggestion.frequency)} • ~{suggestion.estimated_minutes} mins
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => openCreateDialog(suggestion)}
+                    className="text-xs px-3 py-1"
+                  >
+                    Add chore
+                  </Button>
+                  <Button
+                    onClick={() => dismissSuggestion(suggestion.id)}
+                    variant="secondary"
+                    className="text-xs px-3 py-1"
+                  >
+                    Not now
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Recurring templates</h2>
         {templates.length === 0 ? (
@@ -313,6 +416,14 @@ export default function ChoresPage() {
                           {frequencyLabel(template)}
                           {template.estimated_minutes
                             ? ` • ~${template.estimated_minutes} mins`
+                            : ''}
+                        </p>
+                        <p className="text-xs text-secondary mt-1">
+                          {template.next_due_date
+                            ? `Next due ${formatUkDate(template.next_due_date)}`
+                            : 'Next due not scheduled'}
+                          {template.streak_current
+                            ? ` • ${template.streak_current} on time in a row`
                             : ''}
                         </p>
                       </div>
@@ -391,6 +502,7 @@ export default function ChoresPage() {
                 <option value="biweekly">Fortnightly</option>
                 <option value="monthly">Monthly</option>
                 <option value="quarterly">Quarterly</option>
+                <option value="yearly">Yearly</option>
               </select>
             </div>
             <div>

@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useTheme } from '@/components/theme-provider';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { apiFetch, resolveAbsoluteApiUrl } from '@/lib/api';
@@ -12,6 +13,7 @@ import { Household, Room, User } from '@/lib/types';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
+  const { mode, setMode } = useTheme();
   const [household, setHousehold] = React.useState<Household | null>(null);
   const [members, setMembers] = React.useState<User[]>([]);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -254,6 +256,35 @@ export default function SettingsPage() {
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Appearance */}
+      <Card className="border-2">
+        <CardHeader>
+          <CardTitle className="text-base">Appearance</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2" role="group" aria-label="Theme">
+            {(['auto', 'light', 'dark'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setMode(value)}
+                aria-pressed={mode === value}
+                className={`flex-1 min-h-[44px] border rounded-card text-sm font-medium capitalize ${
+                  mode === value
+                    ? 'border-foreground bg-foreground text-background'
+                    : 'border-border text-foreground hover:bg-surface'
+                }`}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-secondary mt-2">
+            Auto follows your device theme.
+          </p>
         </CardContent>
       </Card>
 

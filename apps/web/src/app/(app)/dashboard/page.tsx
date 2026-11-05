@@ -2,25 +2,52 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { ProgressWidget } from '@/components/progress/progress-widget';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { apiFetch } from '@/lib/api';
 import { dueLabel, londonDateString } from '@/lib/dates';
-import { BinSchedule, ChoreInstance } from '@/lib/types';
+import { BinAction, BinSchedule, ChoreInstance, ProgressSummary } from '@/lib/types';
+
+interface CompletionResponse {
+  xp_awarded: number;
+  on_time: boolean;
+  streak_current: number;
+}
+
+function timeLabel(value: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
 
 export default function DashboardPage() {
   const today = londonDateString();
   const [chores, setChores] = React.useState<ChoreInstance[]>([]);
   const [tonightsBins, setTonightsBins] = React.useState<BinSchedule[]>([]);
+  const [progress, setProgress] = React.useState<ProgressSummary | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
+  const [binsBusy, setBinsBusy] = React.useState(false);
+
+  const loadProgress = async () => {
+    try {
+      setProgress(await apiFetch<ProgressSummary>('/api/v1/progress'));
+    } catch {
+      setProgress(null);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
+      const progressPromise = loadProgress();
       const [choresData, binsData] = await Promise.all([
         apiFetch<ChoreInstance[]>(
           `/api/v1/chores/instances?status=pending&due_before=${today}`
@@ -29,6 +56,7 @@ export default function DashboardPage() {
       ]);
       setChores(choresData);
       setTonightsBins(binsData);
+      await progressPromise;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
     } finally {
@@ -44,13 +72,42 @@ export default function DashboardPage() {
   const completeChore = async (id: string) => {
     setActionError(null);
     try {
-      await apiFetch(`/api/v1/chores/instances/${id}/complete`, {
+      const result = await apiFetch<CompletionResponse>(
+        `/api/v1/chores/instances/${id}/complete`,
+        { method: 'POST', body: JSON.stringify({}) }
+      );
+      setChores((prev) => prev.filter((chore) => chore.id !== id));
+      const streak =
+        result.streak_current > 1 ? ` ${result.streak_current} on time in a row.` : '';
+      setStatusMessage(`Done. +${result.xp_awarded} XP.${streak}`);
+      await loadProgress();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not mark this chore done.');
+    }
+  };
+
+  const markBinsOut = async () => {
+    setBinsBusy(true);
+    setActionError(null);
+    const remaining = tonightsBins.filter((bin) => !bin.put_out_at).length;
+    try {
+      const actions = await apiFetch<BinAction[]>('/api/v1/bins/actions', {
         method: 'POST',
         body: JSON.stringify({}),
       });
-      setChores((prev) => prev.filter((chore) => chore.id !== id));
+      const updated = await apiFetch<BinSchedule[]>('/api/v1/bins/tonight');
+      setTonightsBins(updated);
+      const newActions = remaining > 0 ? Math.min(remaining, actions.length) : 0;
+      setStatusMessage(
+        newActions > 0
+          ? `Bins out. +${newActions * 5} XP.`
+          : 'Bins were already out.'
+      );
+      await loadProgress();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not mark this chore done.');
+      setActionError(err instanceof Error ? err.message : 'Could not mark the bins out.');
+    } finally {
+      setBinsBusy(false);
     }
   };
 
@@ -79,6 +136,9 @@ export default function DashboardPage() {
     );
   }
 
+  const allBinsOut =
+    tonightsBins.length > 0 && tonightsBins.every((bin) => bin.put_out_at);
+
   return (
     <div className="space-y-6">
       <div>
@@ -91,22 +151,29 @@ export default function DashboardPage() {
           {actionError}
         </div>
       )}
+      {statusMessage && (
+        <p
+          role="status"
+          className="p-3 text-sm rounded-card border border-foreground bg-surface font-medium"
+        >
+          {statusMessage}
+        </p>
+      )}
 
-      {/* Tonights Bins Widget */}
       {tonightsBins.length > 0 && (
         <Card className="border-heavy bg-surface">
           <CardHeader>
-            <div className="text-xs font-semibold uppercase tracking-wider text-secondary">
-              Collection Tomorrow Morning
+            <div className="text-xs font-semibold text-secondary">
+              Collection tomorrow morning
             </div>
-            <CardTitle className="text-lg">Put out the bins tonight</CardTitle>
+            <CardTitle className="text-lg">Put the bins out tonight</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <div className="flex flex-wrap gap-2">
               {tonightsBins.map((bin) => (
                 <div
                   key={bin.id}
-                  className="px-3 py-1.5 border border-foreground bg-background rounded-card text-sm font-semibold flex items-center space-x-2"
+                  className="px-3 py-2 border border-foreground bg-background rounded-card text-sm font-semibold flex items-center space-x-2"
                 >
                   <span
                     className="w-3 h-3 rounded-full border border-foreground inline-block"
@@ -115,18 +182,43 @@ export default function DashboardPage() {
                   <span>
                     {bin.name} ({bin.colour})
                   </span>
+                  {bin.put_out_at && <span className="text-xs text-secondary">Out</span>}
                 </div>
               ))}
             </div>
+
+            {allBinsOut ? (
+              <p className="text-sm text-secondary">
+                Bins out
+                {tonightsBins[0]?.put_out_by_name
+                  ? ` by ${tonightsBins[0].put_out_by_name}`
+                  : ''}
+                {tonightsBins[0]?.put_out_at
+                  ? ` at ${timeLabel(tonightsBins[0].put_out_at)}`
+                  : ''}
+                .
+              </p>
+            ) : (
+              <Button
+                onClick={markBinsOut}
+                variant="secondary"
+                disabled={binsBusy}
+                className="text-xs px-3 py-1"
+              >
+                {binsBusy ? 'Saving...' : 'Mark bins out'}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {/* Today's Chores */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">Today&apos;s chores</h2>
-          <Link href="/chores" className="text-sm font-medium underline text-secondary hover:text-foreground">
+          <Link
+            href="/chores"
+            className="text-sm font-medium underline text-secondary hover:text-foreground"
+          >
             View all chores
           </Link>
         </div>
@@ -174,37 +266,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Quick Links */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-border">
-        <Link
-          href="/shopping"
-          className="p-3 border border-border rounded-card hover:bg-surface text-center"
-        >
-          <div className="text-sm font-semibold">Shopping list</div>
-          <div className="text-xs text-secondary">Check supplies</div>
-        </Link>
-        <Link
-          href="/bins"
-          className="p-3 border border-border rounded-card hover:bg-surface text-center"
-        >
-          <div className="text-sm font-semibold">Bin dates</div>
-          <div className="text-xs text-secondary">Schedules</div>
-        </Link>
-        <Link
-          href="/bills"
-          className="p-3 border border-border rounded-card hover:bg-surface text-center"
-        >
-          <div className="text-sm font-semibold">Bills</div>
-          <div className="text-xs text-secondary">Upcoming payments</div>
-        </Link>
-        <Link
-          href="/calendar"
-          className="p-3 border border-border rounded-card hover:bg-surface text-center"
-        >
-          <div className="text-sm font-semibold">Calendar</div>
-          <div className="text-xs text-secondary">Shared view</div>
-        </Link>
-      </div>
+      {progress && <ProgressWidget summary={progress} />}
     </div>
   );
 }

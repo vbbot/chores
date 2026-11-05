@@ -16,6 +16,7 @@ const moreNav = [
   { label: 'Bills', href: '/bills' },
   { label: 'Calendar', href: '/calendar' },
   { label: 'Notes', href: '/notes' },
+  { label: 'Progress', href: '/progress' },
   { label: 'Settings', href: '/settings' },
 ];
 
@@ -89,13 +90,14 @@ export function Nav() {
           className="md:hidden fixed bottom-16 left-0 right-0 z-50 border-t-2 border-foreground bg-background p-4"
         >
           <div className="grid grid-cols-2 gap-2">
-            {moreNav.map((item) => (
+            {moreNav.map((item, index) => (
               <Link
                 key={item.href}
                 href={item.href}
                 aria-current={isActive(item.href) ? 'page' : undefined}
                 className={cn(
                   'px-3 py-3 rounded-card border-2 text-sm font-medium min-h-[44px] flex items-center',
+                  index === moreNav.length - 1 ? 'col-span-2' : '',
                   isActive(item.href)
                     ? 'border-foreground bg-foreground text-background'
                     : 'border-border text-foreground'

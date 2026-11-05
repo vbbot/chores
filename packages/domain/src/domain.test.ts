@@ -5,6 +5,9 @@ import { collectionDates, nextCollection } from './bins';
 import { calculateNextDueDate, pickFairAssignee } from './chores';
 import { dueLabel, formatUkDate, londonToday, weekdayIndex } from './dates';
 import { sortNotes } from './notes';
+import { completionXp, levelForXp } from './xp';
+import { templateStreak } from './streaks';
+import { suggestChores } from './suggestions';
 
 const weekly = {
   collection_day: 4,
@@ -53,8 +56,10 @@ describe('bill dates', () => {
 
 describe('chores', () => {
   it('calculates recurrence', () => {
+    expect(calculateNextDueDate('daily', null, '2026-11-04')).toBe('2026-11-05');
     expect(calculateNextDueDate('weekly', null, '2026-11-04')).toBe('2026-11-11');
     expect(calculateNextDueDate('every_n_days', 4, '2026-11-04')).toBe('2026-11-08');
+    expect(calculateNextDueDate('monthly', null, '2026-01-31')).toBe('2026-02-28');
   });
 
   it('picks the least-loaded member', () => {
@@ -84,5 +89,71 @@ describe('notes', () => {
       { id: 'c', is_pinned: false, updated_at: '2026-01-02T00:00:00Z' },
     ] as never;
     expect(sortNotes(notes).map((note: { id: string }) => note.id)).toEqual(['b', 'a', 'c']);
+  });
+});
+
+
+describe('xp', () => {
+  it('awards minutes plus an on-time bonus', () => {
+    expect(completionXp(20, true)).toBe(25);
+    expect(completionXp(20, false)).toBe(20);
+    expect(completionXp(null, true)).toBe(20);
+  });
+
+  it('maps totals to levels', () => {
+    expect(levelForXp(0).level).toBe(1);
+    expect(levelForXp(100).level).toBe(2);
+    expect(levelForXp(300).level).toBe(3);
+    expect(levelForXp(600).level).toBe(4);
+  });
+});
+
+describe('streaks', () => {
+  it('counts consecutive on-time completions and lets today stay pending', () => {
+    const history = [
+      { due_date: '2026-11-01', status: 'completed', on_time: true },
+      { due_date: '2026-11-02', status: 'completed', on_time: true },
+      { due_date: '2026-11-03', status: 'completed', on_time: true },
+      { due_date: '2026-11-04', status: 'pending', on_time: false },
+    ];
+    expect(templateStreak(history as never, '2026-11-04')).toEqual({
+      current: 3,
+      best: 3,
+    });
+  });
+
+  it('breaks the streak on a skip', () => {
+    const history = [
+      { due_date: '2026-11-01', status: 'completed', on_time: true },
+      { due_date: '2026-11-02', status: 'skipped', on_time: false },
+      { due_date: '2026-11-03', status: 'completed', on_time: true },
+    ];
+    expect(templateStreak(history as never, '2026-11-04')).toEqual({
+      current: 1,
+      best: 1,
+    });
+  });
+});
+
+
+describe('suggestions', () => {
+  it('returns at most one suggestion per room', () => {
+    const suggestions = suggestChores({
+      month: 11,
+      today: '2026-11-05',
+      rooms: [
+        { id: 'bath', name: 'Bathroom' },
+        { id: 'kitchen', name: 'Kitchen' },
+        { id: 'living', name: 'Living Room' },
+      ],
+      templates: [],
+      instances: [],
+      dismissedIds: [],
+      pendingCount: 0,
+    });
+    const rooms = suggestions.map((suggestion) => suggestion.room_id);
+    expect(new Set(rooms).size).toBe(rooms.length);
+    expect(suggestions.length).toBeLessThanOrEqual(3);
+    expect(suggestions.every((suggestion) => suggestion.reason.length > 0)).toBe(true);
   });
 });

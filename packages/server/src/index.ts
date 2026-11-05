@@ -15,3 +15,5 @@ export * from './notes';
 export * from './notifications';
 export * from './ical';
 export * from './rate-limit';
+export * from './progress';
+export * from './suggestions';

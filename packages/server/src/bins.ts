@@ -1,10 +1,17 @@
 import { randomUUID } from 'node:crypto';
 
-import type { BinException, BinSchedule } from '@chores/domain';
-import { addDays, collectionDates, londonToday, nextCollection } from '@chores/domain';
+import type { BinAction, BinException, BinSchedule } from '@chores/domain';
+import {
+  BIN_PUT_OUT_XP,
+  addDays,
+  collectionDates,
+  londonToday,
+  nextCollection,
+} from '@chores/domain';
 
 import { householdCollection } from './households';
 import { ApiError } from './http';
+import { listMembers } from './users';
 
 export type BinScheduleInput = {
   bin_type: string;
@@ -22,6 +29,20 @@ function scheduleFromDoc(id: string, data: Record<string, unknown>): BinSchedule
 
 function exceptionFromDoc(id: string, data: Record<string, unknown>): BinException {
   return { id, ...(data as unknown as Omit<BinException, 'id'>) };
+}
+
+function actionFromDoc(id: string, data: Record<string, unknown>): BinAction {
+  return { id, ...(data as unknown as Omit<BinAction, 'id'>) };
+}
+
+export async function binActionsForDate(
+  householdId: string,
+  collectionDate: string
+): Promise<BinAction[]> {
+  const result = await householdCollection(householdId, 'binActions').get();
+  return result.docs
+    .map((doc) => actionFromDoc(doc.id, doc.data()))
+    .filter((action) => action.collection_date === collectionDate);
 }
 
 export async function listBinSchedules(householdId: string): Promise<BinSchedule[]> {
@@ -121,10 +142,67 @@ export async function deleteBinException(
 export async function binsTonight(householdId: string): Promise<BinSchedule[]> {
   const today = londonToday();
   const tomorrow = addDays(today, 1);
-  const schedules = await listBinSchedules(householdId);
+  const [schedules, actions, members] = await Promise.all([
+    listBinSchedules(householdId),
+    binActionsForDate(householdId, tomorrow),
+    listMembers(householdId),
+  ]);
+  const memberNames = new Map(members.map((member) => [member.id, member.name]));
+  const actionBySchedule = new Map(
+    actions.map((action) => [action.schedule_id, action])
+  );
+
   return schedules
     .filter((schedule) => schedule.is_active && schedule.next_collection === tomorrow)
-    .map((schedule) => ({ ...schedule, next_collection: tomorrow }));
+    .map((schedule) => {
+      const action = actionBySchedule.get(schedule.id);
+      return {
+        ...schedule,
+        next_collection: tomorrow,
+        put_out_at: action?.created_at ?? null,
+        put_out_by: action?.member_id ?? null,
+        put_out_by_name: action ? memberNames.get(action.member_id) ?? null : null,
+      };
+    });
+}
+
+export async function markBinsOut(
+  householdId: string,
+  userId: string
+): Promise<BinAction[]> {
+  const schedules = await binsTonight(householdId);
+  if (schedules.length === 0) {
+    throw new ApiError('There are no bins due tonight', 400);
+  }
+
+  const collectionDate = schedules[0].next_collection!;
+  const actions: BinAction[] = [];
+
+  for (const schedule of schedules) {
+    const id = `${collectionDate}_${schedule.id}`;
+    const ref = householdCollection(householdId, 'binActions').doc(id);
+    const existing = await ref.get();
+    if (existing.exists) {
+      actions.push(actionFromDoc(existing.id, existing.data() as Record<string, unknown>));
+      continue;
+    }
+
+    const action = {
+      schedule_id: schedule.id,
+      collection_date: collectionDate,
+      member_id: userId,
+      created_at: new Date().toISOString(),
+      xp_awarded: BIN_PUT_OUT_XP,
+    };
+    try {
+      await ref.create(action);
+      actions.push({ id, ...action });
+    } catch (error) {
+      if ((error as { code?: number }).code !== 6) throw error;
+    }
+  }
+
+  return actions;
 }
 
 export async function upcomingBinDates(

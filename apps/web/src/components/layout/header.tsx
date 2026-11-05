@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { useAuth } from '@/lib/auth';
 
 export function Header() {
@@ -14,24 +15,28 @@ export function Header() {
         </Link>
       </div>
 
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-3">
         {user ? (
           <div className="flex items-center space-x-3 text-sm">
             <span className="text-secondary hidden sm:inline">{user.name}</span>
+            <ThemeToggle />
             <button
               onClick={logout}
-              className="text-xs border border-border px-2 py-1 rounded-card hover:bg-surface font-medium"
+              className="text-xs border border-border px-3 min-h-[44px] rounded-card hover:bg-surface font-medium"
             >
               Sign out
             </button>
           </div>
         ) : (
-          <Link
-            href="/login"
-            className="text-sm font-medium border border-border px-3 py-1.5 rounded-card hover:bg-surface"
-          >
-            Sign in
-          </Link>
+          <>
+            <ThemeToggle />
+            <Link
+              href="/login"
+              className="text-sm font-medium border border-border px-3 min-h-[44px] rounded-card hover:bg-surface inline-flex items-center"
+            >
+              Sign in
+            </Link>
+          </>
         )}
       </div>
     </header>

@@ -1,7 +1,7 @@
 import {
   choreTemplateCreateSchema,
   createChoreTemplate,
-  listChoreTemplates,
+  listChoreTemplatesWithStreaks,
   requireSameOrigin,
   requireUserHousehold,
   route,
@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   return route(async () => {
     const { householdId } = await requireUserHousehold(request);
-    return Response.json(await listChoreTemplates(householdId));
+    return Response.json(await listChoreTemplatesWithStreaks(householdId));
   });
 }
 

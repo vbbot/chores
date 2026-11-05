@@ -1,5 +1,7 @@
 # Local exports and secrets
 antigravity-export/
+.agents/
+skills-lock.json
 .env
 .env.local
 .env.*.local

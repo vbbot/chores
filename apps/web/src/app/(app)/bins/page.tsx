@@ -160,7 +160,7 @@ export default function BinsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Bin collections</h1>
           <p className="text-sm text-secondary">
-            Weekly and fortnightly council collection schedules.
+            Weekly and fortnightly council collection schedules. Put bins out the evening before.
           </p>
         </div>
         <Button onClick={openCreateDialog}>Add bin</Button>

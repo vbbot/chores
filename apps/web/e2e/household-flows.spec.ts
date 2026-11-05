@@ -47,15 +47,21 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   // 06. Dashboard with tonight's bins widget.
   await page.waitForURL('**/dashboard');
   await expect(page.getByRole('heading', { name: 'Today at home' })).toBeVisible();
-  await expect(page.getByText('Put out the bins tonight')).toBeVisible();
+  await expect(page.getByText('Put the bins out tonight')).toBeVisible();
   await shot(page, project, '06-dashboard');
+
+  await page.getByRole('button', { name: 'Mark bins out' }).click();
+  await expect(page.getByRole('status')).toContainText('Bins out');
 
   // 07-09. Chores: empty state, create dialog, populated list.
   await goTo(page, 'Chores');
   await expect(page.getByRole('heading', { name: 'Chores' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Suggested for your home' })).toBeVisible();
   await shot(page, project, '07-chores-empty');
+  await page.getByRole('button', { name: 'Not now' }).first().click();
+  await expect(page.getByRole('button', { name: 'Not now' })).toHaveCount(2);
 
-  await page.getByRole('button', { name: 'Add chore' }).click();
+  await page.getByRole('button', { name: 'Add chore' }).first().click();
   await expect(page.getByRole('heading', { name: 'Add chore template' })).toBeVisible();
   await expect(page.locator('#chore_name')).toBeFocused();
   await page.fill('#chore_name', 'Mop kitchen floor');
@@ -73,7 +79,20 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await expect(choreInstance.getByRole('button', { name: 'Mark done' })).toBeEnabled();
   await shot(page, project, '09-chores-populated');
   await choreInstance.getByRole('button', { name: 'Mark done' }).click();
+  await expect(page.getByRole('status')).toContainText('XP');
   await expect(page.getByLabel('Assigned to')).toHaveCount(2);
+
+  const todayLondon = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  const templatesResponse = await page.request.get('/api/v1/chores/templates');
+  expect(templatesResponse.status()).toBe(200);
+  const templates = (await templatesResponse.json()) as { name: string; next_due_date?: string }[];
+  const mop = templates.find((template) => template.name === 'Mop kitchen floor');
+  expect(mop?.next_due_date && mop.next_due_date > todayLondon).toBeTruthy();
 
   // 10. Bins.
   await goTo(page, 'Bins');
@@ -163,7 +182,15 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   const feedResponse = await page.request.get(feedUrl!);
   expect(feedResponse.status()).toBe(200);
   expect(await feedResponse.text()).toContain('BEGIN:VCALENDAR');
+
+  const binsFeed = page.getByText(/\/api\/ical\/feed\/.+\/bins\.ics/);
+  const binsFeedUrl = (await binsFeed.textContent())?.trim();
+  expect(binsFeedUrl).toBeTruthy();
+  const binsFeedResponse = await page.request.get(binsFeedUrl!);
+  expect(binsFeedResponse.status()).toBe(200);
+  expect(await binsFeedResponse.text()).toContain('Put out bins');
   await expect(page.getByText('Members (1)')).toBeVisible();
+  await expect(page.getByText('Appearance')).toBeVisible();
 
   const addRoomButton = page.getByRole('button', { name: 'Add room' }).first();
   await addRoomButton.click();
@@ -184,8 +211,19 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL('**/dashboard');
   await expect(page.getByRole('heading', { name: 'Today at home' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'View progress' })).toBeVisible();
 
-  // 23. Bearer-token auth for future native clients.
+  await page.getByRole('button', { name: 'Switch to dark theme' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await shot(page, project, '22-dashboard-dark');
+
+  await page.getByRole('link', { name: 'View progress' }).click();
+  await page.waitForURL('**/progress');
+  await expect(page.getByRole('heading', { name: 'Progress' })).toBeVisible();
+  await expect(page.getByText(/Your level/)).toBeVisible();
+  await shot(page, project, '23-progress');
+
+  // 24. Bearer-token auth for future native clients.
   const rejectedLogin = await page.request.post('/api/v1/auth/login', {
     data: { email, password: 'TestPassword123' },
   });

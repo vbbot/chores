@@ -52,3 +52,20 @@ Reason: a household app has no brand colour to push. Black and white puts conten
 - No emoji in UI
 - No badge pills
 - No stat cards with fake deltas
+
+## Progress and Streaks
+
+- Chores stay the focal point. XP and streaks are secondary.
+- Personal and household progress use bordered rows, not four stat cards.
+- Progress bars are a 2px bordered track with a solid fill. No gradient fill.
+- No confetti, glow, pulsing streak flames, coins, shops, or badge grid.
+- Streaks use plain text: `3 on time in a row`.
+- The seven-day strip uses filled and empty bordered cells, not a chart.
+- Suggestions are labelled as suggestions. No AI badge or sparkle icon.
+
+## Bin Preparation
+
+- The bins card appears on the day before collection.
+- The action is `Mark bins out`, not a reminder with no completion.
+- The card shows who marked them out and when.
+- The iCal feed includes a previous-day preparation event and the collection-day event.

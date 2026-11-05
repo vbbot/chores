@@ -4,4 +4,8 @@ export * from './bins';
 export * from './bills';
 export * from './chores';
 export * from './notes';
+export * from './progress';
+export * from './streaks';
+export * from './suggestions';
 export * from './validation';
+export * from './xp';
