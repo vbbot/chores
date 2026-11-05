@@ -267,6 +267,7 @@ export default function DashboardPage() {
                             }`}
                           >
                             {dueLabel(chore.due_date, today)}
+                            {chore.due_time ? ` at ${chore.due_time}` : ''}
                             {chore.room_name ? ` • ${chore.room_name}` : ''}
                             {group.showOwner ? ` • ${owner}` : ''}
                             {chore.task_type === 'one_off' ? ' • One-off' : ''}

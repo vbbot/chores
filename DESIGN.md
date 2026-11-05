@@ -381,12 +381,53 @@ Suggestions:
 - `Not now` dismisses for 30 days.
 - No AI badge, sparkle icon, or chat box.
 
+#### Scheduling
+
+Recurring chores support:
+
+- Start date.
+- Weekly weekdays, including multiple days.
+- Fortnightly parity.
+- Monthly day of month, or first to fourth or last weekday.
+- Quarterly and yearly patterns.
+- Optional end date.
+- Optional due time.
+
+Due time changes on-time rules:
+
+- With a due time, completion after that time is late.
+- Without a due time, completion by the end of the due date is on time.
+
+Editing a series changes future occurrences only. Completed history stays. Undo restores the latest closed occurrence and removes the next one.
+
+#### Reminders
+
+Household defaults:
+
+- Daily brief time.
+- Bin reminder time.
+- Bill lead days and reminder time.
+- Calendar lead minutes.
+- Quiet hours.
+
+Each member can override the timing and disable each reminder type. Per-item overrides exist on chores, bin schedules, bills, and calendar events.
+
+The daily brief combines:
+
+- Chores due today and overdue.
+- Bins due tonight.
+- Bills due within the lead window.
+- Today's calendar events.
+
+A 15-minute cron runs the reminder engine. Delivery records are keyed by entity, occurrence, and member, so retries do not duplicate a reminder.
+
 ### Bins
 
 - Explains that bins go out the evening before.
 - Next collection date is prominent.
 - Schedule rows are quiet.
-- Each schedule has `Change next collection` and `Delete`.
+- Each schedule has `Edit`, `Change next collection`, and `Delete`.
+- Edit allows day, frequency, colour, start date, and reminder time.
 - Delete confirms first and removes that schedule's exceptions.
 - Scheduled changes use 1px rows.
 - Dashboard owns the tonight completion action.
@@ -398,6 +439,8 @@ Suggestions:
 - Checked items are grouped under `In the basket`.
 - Both group headings use the same type size. `In the basket` uses secondary text.
 - Rows use 1px borders.
+- Items can be edited.
+- `Clear basket` removes all checked items.
 - Remove has a 44px target.
 
 ### Bills
@@ -406,6 +449,7 @@ Suggestions:
 - Quiet sections with 1px rows.
 - Amount right aligned with tabular figures.
 - Mark paid is a secondary button.
+- Edit is available for amount, provider, frequency, due date, payment method, reference, notes, and reminder timing.
 - Delete is a text action with confirmation.
 
 ### Calendar
@@ -414,9 +458,11 @@ Suggestions:
 - Today's date label uses accent.
 - Event rows use 1px borders.
 - No fake month grid until the data justifies it.
-- Add event uses a dialog.
+- Add and edit event use one dialog.
+- Supports end time, all-day, assigned member, and reminder lead minutes.
 - Creating an event notifies the other household members.
 - If the event is assigned to one person, only that person is notified.
+- Events also produce a reminder before they start.
 
 ### Notes
 
@@ -441,6 +487,20 @@ Sections:
 
 Uses quiet sections with 1px dividers. No 2px card grid. Workload balance is informational, never a leaderboard or fairness score.
 
+### Notification centre
+
+- Bell in the header with an unread count.
+- Lists chore, bin, bill, calendar, assignment, and test notifications.
+- Selecting a notification marks it read and opens its screen.
+- Mark all read is available.
+
+### Search and export
+
+- Search opens from the header.
+- Searches chores, notes, bills, calendar events, and shopping items.
+- Results link to their screen.
+- Settings exports household data as a JSON file.
+
 ### Settings
 
 Reached from the header cog.
@@ -449,11 +509,26 @@ Sections separated by 1px rules:
 
 - Appearance
 - Household
+- Reminder defaults
 - Rooms
 - Members
 - Calendar feeds
-- Notifications
+- Personal reminders
+- Device notifications
 - Account and sign out
+
+Household controls:
+
+- Rotate the invite code.
+- Export household data.
+- Remove members as an admin, or leave the household.
+
+Per-member controls:
+
+- Enable or disable each reminder type.
+- Override reminder times.
+- Respect quiet hours.
+- Send a test notification to the current device.
 
 Delivery:
 

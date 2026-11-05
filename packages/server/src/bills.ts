@@ -16,6 +16,8 @@ export type BillInput = {
   account_reference?: string | null;
   notes?: string | null;
   next_due_date?: string | null;
+  reminder_days_before?: number | null;
+  reminder_time?: string | null;
   is_active?: boolean;
 };
 
@@ -48,6 +50,8 @@ export async function createBill(householdId: string, input: BillInput): Promise
     account_reference: input.account_reference ?? null,
     notes: input.notes ?? null,
     next_due_date: input.next_due_date ?? null,
+    reminder_days_before: input.reminder_days_before ?? null,
+    reminder_time: input.reminder_time ?? null,
     is_active: true,
     created_at: new Date().toISOString(),
   };

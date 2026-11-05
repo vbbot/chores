@@ -8,6 +8,7 @@ export const queryKeys = {
     templates: ['chores', 'templates'] as const,
     due: (today: string) => ['chores', 'instances', today] as const,
     pending: ['chores', 'instances', 'pending'] as const,
+    history: ['chores', 'instances', 'history'] as const,
   },
   bins: {
     all: ['bins'] as const,
@@ -19,4 +20,5 @@ export const queryKeys = {
   shopping: ['shopping'] as const,
   calendar: ['calendar'] as const,
   notes: ['notes'] as const,
+  notifications: ['notifications'] as const,
 };

@@ -34,6 +34,24 @@ export function MoonIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function BellIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconBase {...props}>
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+      <path d="M10 21h4" />
+    </IconBase>
+  );
+}
+
+export function SearchIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconBase {...props}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-4-4" />
+    </IconBase>
+  );
+}
+
 export function SettingsIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <IconBase {...props}>

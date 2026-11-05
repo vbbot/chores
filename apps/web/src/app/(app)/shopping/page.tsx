@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { apiFetch } from '@/lib/api';
@@ -14,10 +15,12 @@ import { ShoppingItem, ShoppingList } from '@/lib/types';
 function ItemRow({
   item,
   onToggle,
+  onEdit,
   onDelete,
 }: {
   item: ShoppingItem;
   onToggle: (item: ShoppingItem) => void;
+  onEdit: (item: ShoppingItem) => void;
   onDelete: (id: string) => void;
 }) {
   return (
@@ -41,13 +44,21 @@ function ItemRow({
         </label>
       </div>
 
-      <button
-        onClick={() => onDelete(item.id)}
-        className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
-        aria-label="Remove item"
-      >
-        Remove
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => onEdit(item)}
+          className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1"
+        >
+          Edit
+        </button>
+        <button
+          onClick={() => onDelete(item.id)}
+          className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
+          aria-label="Remove item"
+        >
+          Remove
+        </button>
+      </div>
     </div>
   );
 }
@@ -62,6 +73,10 @@ export default function ShoppingPage() {
   const [itemName, setItemName] = React.useState('');
   const [quantity, setQuantity] = React.useState(1);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [editingItem, setEditingItem] = React.useState<ShoppingItem | null>(null);
+  const [editName, setEditName] = React.useState('');
+  const [editQuantity, setEditQuantity] = React.useState(1);
+  const [savingEdit, setSavingEdit] = React.useState(false);
 
   const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,6 +105,50 @@ export default function ShoppingPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.shopping });
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to update item');
+    }
+  };
+
+  const openEdit = (item: ShoppingItem) => {
+    setEditingItem(item);
+    setEditName(item.name);
+    setEditQuantity(item.quantity);
+  };
+
+  const saveEdit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingItem || !editName.trim()) return;
+    setSavingEdit(true);
+    setActionError(null);
+    try {
+      await apiFetch(`/api/v1/shopping/items/${editingItem.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: editName.trim(),
+          quantity: editQuantity,
+        }),
+      });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.shopping });
+      setEditingItem(null);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to update item');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const clearBasket = async () => {
+    if (checked.length === 0) return;
+    if (!window.confirm('Remove all checked items from the basket?')) return;
+    setActionError(null);
+    try {
+      await Promise.all(
+        checked.map((item) =>
+          apiFetch(`/api/v1/shopping/items/${item.id}`, { method: 'DELETE' })
+        )
+      );
+      await queryClient.invalidateQueries({ queryKey: queryKeys.shopping });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to clear basket');
     }
   };
 
@@ -184,6 +243,7 @@ export default function ShoppingPage() {
                   key={item.id}
                   item={item}
                   onToggle={toggleCheck}
+                  onEdit={openEdit}
                   onDelete={deleteItem}
                 />
               ))}
@@ -192,14 +252,22 @@ export default function ShoppingPage() {
 
           {checked.length > 0 && (
             <section className="space-y-2">
-              <h2 className="text-sm font-semibold text-secondary border-b border-border pb-2">
-                In the basket
-              </h2>
+              <div className="flex items-center justify-between border-b border-border pb-2">
+                <h2 className="text-sm font-semibold text-secondary">In the basket</h2>
+                <button
+                  type="button"
+                  onClick={clearBasket}
+                  className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
+                >
+                  Clear basket
+                </button>
+              </div>
               {checked.map((item) => (
                 <ItemRow
                   key={item.id}
                   item={item}
                   onToggle={toggleCheck}
+                  onEdit={openEdit}
                   onDelete={deleteItem}
                 />
               ))}
@@ -207,6 +275,46 @@ export default function ShoppingPage() {
           )}
         </div>
       )}
+
+      <Dialog
+        open={editingItem !== null}
+        onClose={() => setEditingItem(null)}
+        title="Edit shopping item"
+      >
+        <form onSubmit={saveEdit} className="space-y-4">
+          <div>
+            <label htmlFor="edit_item_name" className="block text-sm font-medium mb-1">
+              Item
+            </label>
+            <Input
+              id="edit_item_name"
+              required
+              value={editName}
+              onChange={(event) => setEditName(event.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="edit_item_quantity" className="block text-sm font-medium mb-1">
+              Quantity
+            </label>
+            <Input
+              id="edit_item_quantity"
+              type="number"
+              min="1"
+              value={editQuantity}
+              onChange={(event) => setEditQuantity(Number(event.target.value))}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setEditingItem(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={savingEdit}>
+              {savingEdit ? 'Saving...' : 'Save item'}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 }

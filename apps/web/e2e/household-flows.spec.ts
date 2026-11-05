@@ -108,6 +108,18 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await choreInstance.getByRole('button', { name: 'Mark done' }).click();
   await expect(page.getByRole('status')).toContainText('XP');
 
+  const historySection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Recent history' }) });
+  const mopHistory = historySection
+    .locator('div.rounded-card')
+    .filter({ has: page.getByRole('heading', { name: 'Mop kitchen floor', exact: true }) })
+    .first();
+  await mopHistory.getByRole('button', { name: 'Undo' }).click();
+  await expect(choreInstance).toBeVisible();
+  await choreInstance.getByRole('button', { name: 'Mark done' }).click();
+  await expect(page.getByRole('status')).toContainText('XP');
+
   // One-off task.
   await page.getByRole('button', { name: 'Add task' }).click();
   await expect(page.getByRole('heading', { name: 'Add one-off task' })).toBeVisible();
@@ -186,6 +198,13 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await page.fill('input[placeholder*="Add item"]', 'Oat milk');
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(page.getByText('Oat milk')).toBeVisible();
+  const oatRow = page
+    .locator('div.rounded-card')
+    .filter({ has: page.getByText('Oat milk', { exact: true }) });
+  await oatRow.getByRole('button', { name: 'Edit' }).click();
+  await page.fill('#edit_item_quantity', '2');
+  await page.getByRole('button', { name: 'Save item' }).click();
+  await expect(page.getByText('2x Oat milk')).toBeVisible();
   await shot(page, project, '12-shopping-populated');
 
   // 13-15. Bills.
@@ -205,6 +224,10 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await shot(page, project, '15-bills-populated');
   await page.getByRole('button', { name: 'Mark paid' }).click();
   await expect(page.getByText('15 Feb 2030')).toBeVisible();
+  await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
+  await page.fill('#bill_amount', '90.00');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('£90.00')).toBeVisible();
   await shot(page, project, '16-bills-paid');
 
   // 17-18. Calendar.
@@ -216,6 +239,12 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await page.fill('#ev_start', '2030-02-20T10:00');
   await page.getByRole('button', { name: 'Save event' }).click();
   await expect(page.getByRole('heading', { name: 'Boiler service' })).toBeVisible();
+  await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
+  await page.fill('#ev_title', 'Boiler service and flush');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Boiler service and flush' })
+  ).toBeVisible();
   await shot(page, project, '18-calendar-populated');
 
   // 19. Notes.
@@ -232,6 +261,15 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await page.getByRole('button', { name: 'Save note' }).click();
   await expect(page.getByText(/Updated/)).toBeVisible();
   await shot(page, project, '19-notes');
+
+  await page.getByRole('button', { name: 'Search' }).click();
+  const searchDialog = page.getByRole('dialog', { name: 'Search household' });
+  await expect(searchDialog).toBeVisible();
+  await searchDialog.getByLabel('Search household').fill('Wi-Fi');
+  await searchDialog.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(searchDialog.getByText('Wi-Fi password')).toBeVisible();
+  await searchDialog.getByRole('button', { name: /Wi-Fi password/ }).click();
+  await page.waitForURL('**/notes');
 
   // 20-21. Settings via the header cog.
   if (project === 'mobile') {
@@ -269,6 +307,20 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await roomDialog.getByLabel('Room name').fill('Utility room');
   await roomDialog.getByRole('button', { name: 'Add room' }).click();
   await expect(page.getByText('Utility room')).toBeVisible();
+
+  await page.fill('#digest_time', '08:15');
+  await page.fill('#bins_time', '20:00');
+  await page.getByRole('button', { name: 'Save household reminders' }).click();
+  await expect(page.getByText('Household reminder defaults saved.')).toBeVisible();
+
+  await page.fill('#user_digest_time', '08:30');
+  await page.getByRole('button', { name: 'Save my reminders' }).click();
+  await expect(page.getByText('Your reminder preferences saved.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Send test notification' }).click();
+  await expect(
+    page.getByText('Test notification sent. Check this device.')
+  ).toBeVisible();
   await shot(page, project, '21-settings');
 
   // 22. Sign out and sign back in with ALTCHA.
@@ -452,6 +504,38 @@ test('two-member distribution: fixed, balanced, and rotation', async ({
   );
   expect(nextBathroom?.assigned_to).toBe(meB.id);
 
+  // Scheduling rules save start date, weekday, due time, and reminder settings.
+  const monday = new Date();
+  monday.setUTCDate(monday.getUTCDate() + 1);
+  while (monday.getUTCDay() !== 1) monday.setUTCDate(monday.getUTCDate() + 1);
+  const mondayDate = monday.toISOString().slice(0, 10);
+  const scheduledResponse = await page.request.post('/api/v1/chores/templates', {
+    data: {
+      name: 'Scheduled test chore',
+      task_type: 'recurring',
+      start_date: mondayDate,
+      frequency: 'weekly',
+      weekdays: [0],
+      due_time: '18:00',
+      reminder_mode: 'before_due',
+      reminder_offset_minutes: 30,
+      assignment_mode: 'anyone',
+    },
+  });
+  expect(scheduledResponse.status()).toBe(200);
+  const scheduled = (await scheduledResponse.json()) as {
+    next_due_date: string;
+    weekdays: number[];
+    due_time: string;
+    reminder_mode: string;
+    reminder_offset_minutes: number;
+  };
+  expect(scheduled.next_due_date).toBe(mondayDate);
+  expect(scheduled.weekdays).toEqual([0]);
+  expect(scheduled.due_time).toBe('18:00');
+  expect(scheduled.reminder_mode).toBe('before_due');
+  expect(scheduled.reminder_offset_minutes).toBe(30);
+
   // Calendar events notify the other household member.
   const eventResponse = await page.request.post('/api/v1/calendar/events', {
     data: {
@@ -471,6 +555,11 @@ test('two-member distribution: fixed, balanced, and rotation', async ({
         notification.body.includes('Boiler service')
     )
   ).toBe(true);
+
+  await pageB.getByRole('button', { name: 'Notifications' }).click();
+  const notificationDialog = pageB.getByRole('dialog', { name: 'Notifications' });
+  await expect(notificationDialog).toBeVisible();
+  await expect(notificationDialog.getByText('Boiler service')).toBeVisible();
 
   await contextB.close();
 });
