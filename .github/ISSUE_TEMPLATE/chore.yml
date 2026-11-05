@@ -1,0 +1,49 @@
+name: Chore
+description: Maintenance, refactor, dependency update, or infrastructure work
+title: "[Chore]: "
+labels: ["type: chore"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What needs doing?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Auth
+        - Household
+        - Chores
+        - Bins
+        - Shopping
+        - Bills
+        - Calendar
+        - Notes
+        - Infra
+        - Mobile
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How will we know this is done?
+    validations:
+      required: true

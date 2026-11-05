@@ -94,6 +94,24 @@ The production deployment is Docker Compose behind a Cloudflare Tunnel.
 Cloudflare should bypass cache for `/api/*`, `/firebase-messaging-sw.js`, and
 `/manifest.json`. Do not expose ports `80` or `3000` directly to the internet.
 
+## Unraid
+
+The GitHub workflow publishes:
+
+```
+ghcr.io/vbbot/chores:latest
+```
+
+Use `deploy/unraid/compose.yaml` with `deploy/unraid/chores.env.example`.
+Place the Firebase service account at:
+
+```
+/mnt/user/appdata/chores/firebase-admin.json
+```
+
+The web container listens on port `3000`. The cron container uses the same
+image and calls the web container internally.
+
 ## Verification
 
 ```sh

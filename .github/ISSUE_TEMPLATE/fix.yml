@@ -1,0 +1,66 @@
+name: Fix
+description: Report a defect or regression
+title: "[Fix]: "
+labels: ["type: fix"]
+body:
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happens now?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What should happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Tap ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Auth
+        - Household
+        - Chores
+        - Bins
+        - Shopping
+        - Bills
+        - Calendar
+        - Notes
+        - Infra
+        - Mobile
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, device, or deployment where this occurred.
