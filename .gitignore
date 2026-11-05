@@ -1,4 +1,5 @@
-# Local configuration and secrets
+# Local exports and secrets
+antigravity-export/
 .env
 .env.local
 .env.*.local
