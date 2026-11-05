@@ -885,6 +885,9 @@ export default function ChoresPage() {
                   : members.find((member) => member.id === instance.completed_by)?.name ??
                     'Someone'
                 : null;
+              const templateExists = templates.some(
+                (template) => template.id === instance.template_id
+              );
               return (
                 <div
                   key={instance.id}
@@ -904,14 +907,18 @@ export default function ChoresPage() {
                         : ''}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => undoChore(instance.id)}
-                    disabled={busyId === instance.id}
-                    className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1 disabled:opacity-50"
-                  >
-                    Undo
-                  </button>
+                  {templateExists ? (
+                    <button
+                      type="button"
+                      onClick={() => undoChore(instance.id)}
+                      disabled={busyId === instance.id}
+                      className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1 disabled:opacity-50"
+                    >
+                      Undo
+                    </button>
+                  ) : (
+                    <span className="text-xs text-secondary">Archived</span>
+                  )}
                 </div>
               );
             })}

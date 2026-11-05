@@ -109,7 +109,7 @@ export default function BinsPage() {
         {
           method: editingId ? 'PUT' : 'POST',
           body: JSON.stringify({
-            bin_type: 'other',
+            ...(editingId ? {} : { bin_type: 'other' }),
             name: name.trim(),
             colour,
             collection_day: collectionDay,

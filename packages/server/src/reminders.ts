@@ -371,7 +371,7 @@ async function sendCalendarReminders(
     const startDate = londonDateString(start);
     const startTime = event.all_day ? '09:00' : londonNow(start).time;
     const startLocal = `${startDate}T${startTime}`;
-    if (now.dateTime >= startLocal) continue;
+    if (now.dateTime > startLocal) continue;
 
     for (const member of members) {
       if (event.assigned_to && event.assigned_to !== member.id) continue;

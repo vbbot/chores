@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { londonWallTimeToIso } from '@chores/domain';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -103,8 +104,8 @@ export default function CalendarPage() {
           method: editingId ? 'PUT' : 'POST',
           body: JSON.stringify({
             title: title.trim(),
-            start_time: new Date(startTime).toISOString(),
-            end_time: endTime ? new Date(endTime).toISOString() : null,
+            start_time: londonWallTimeToIso(startTime),
+            end_time: endTime ? londonWallTimeToIso(endTime) : null,
             all_day: allDay,
             assigned_to: assignedTo || null,
             reminder_minutes_before:

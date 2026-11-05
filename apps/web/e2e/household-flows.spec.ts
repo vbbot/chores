@@ -319,7 +319,7 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
 
   await page.getByRole('button', { name: 'Send test notification' }).click();
   await expect(
-    page.getByText('Test notification sent. Check this device.')
+    page.getByText(/Test notification sent|No device registered/)
   ).toBeVisible();
   await shot(page, project, '21-settings');
 

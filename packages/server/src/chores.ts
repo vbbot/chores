@@ -604,7 +604,9 @@ export async function updateChoreTemplate(
     } as ChoreTemplate;
 
     const today = londonToday();
-    const computed = input.start_date
+    const startChanged =
+      input.start_date !== undefined && input.start_date !== current.start_date;
+    let computed = startChanged
       ? firstChoreDueDate(candidate)
       : nextChoreDueDate(
           candidate,
@@ -613,8 +615,12 @@ export async function updateChoreTemplate(
             : today
         );
 
+    if (computed && computed < today) {
+      computed = nextChoreDueAfter(candidate, computed, today);
+    }
+
     patch.next_due_date = computed;
-    if (input.start_date) {
+    if (startChanged) {
       patch.recurrence_anchor_date = computed ?? input.start_date;
     }
     if (!computed) patch.is_active = false;
@@ -957,7 +963,9 @@ export async function undoChore(
     instance.template_id
   );
   const templateDoc = await templateRef.get();
-  if (!templateDoc.exists) throw new ApiError('Chore template not found', 404);
+  if (!templateDoc.exists) {
+    throw new ApiError('This chore series was deleted and cannot be restored', 409);
+  }
 
   const batch = dbAdmin().batch();
   pendingAfter.forEach((doc) => batch.delete(doc.ref));

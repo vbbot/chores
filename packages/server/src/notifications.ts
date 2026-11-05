@@ -28,7 +28,9 @@ export async function markNotificationRead(
   userId: string,
   notificationId: string
 ): Promise<void> {
-  await notificationsCollection(userId).doc(notificationId).update({ is_read: true });
+  await notificationsCollection(userId)
+    .doc(notificationId)
+    .set({ is_read: true }, { merge: true });
 }
 
 export async function markAllNotificationsRead(userId: string): Promise<void> {

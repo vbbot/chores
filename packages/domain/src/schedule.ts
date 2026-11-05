@@ -88,6 +88,44 @@ export function localDateTime(date: string, time: string): string {
   return `${date}T${time}`;
 }
 
+function londonOffsetMinutes(date: Date): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const get = (type: string) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const asUtc = Date.UTC(
+    get('year'),
+    get('month') - 1,
+    get('day'),
+    get('hour'),
+    get('minute'),
+    get('second')
+  );
+  return Math.round((asUtc - date.getTime()) / 60_000);
+}
+
+/** Converts a London wall-clock datetime-local value to a UTC ISO instant. */
+export function londonWallTimeToIso(value: string): string {
+  const [datePart, timePart] = value.split('T');
+  if (!datePart || !timePart) return new Date(value).toISOString();
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour, minute] = timePart.slice(0, 5).split(':').map(Number);
+  const wallAsUtc = Date.UTC(year, month - 1, day, hour, minute);
+  const firstOffset = londonOffsetMinutes(new Date(wallAsUtc));
+  let instant = wallAsUtc - firstOffset * 60_000;
+  const secondOffset = londonOffsetMinutes(new Date(instant));
+  if (secondOffset !== firstOffset) instant = wallAsUtc - secondOffset * 60_000;
+  return new Date(instant).toISOString();
+}
+
 export function compareLocalDateTime(a: string, b: string): number {
   return a.localeCompare(b);
 }

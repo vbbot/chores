@@ -179,7 +179,11 @@ export async function exportHouseholdData(householdId: string): Promise<Record<s
     })
   );
 
-  const data: Record<string, unknown> = { household, members };
+  const safeMembers = members.map((member) => {
+    const { ical_token: _icalToken, ...safe } = member;
+    return safe;
+  });
+  const data: Record<string, unknown> = { household, members: safeMembers };
   collectionNames.forEach((name, index) => {
     data[name] =
       name === 'shoppingLists' ? shoppingWithItems : collections[index];
@@ -247,6 +251,13 @@ export async function removeHouseholdMember(
       );
     }
     if (Object.keys(patch).length > 0) batch.update(doc.ref, patch);
+  });
+
+  const events = await householdCollection(householdId, 'calendarEvents').get();
+  events.docs.forEach((doc) => {
+    if (doc.data().assigned_to === memberId) {
+      batch.update(doc.ref, { assigned_to: null });
+    }
   });
 
   await batch.commit();

@@ -6,6 +6,7 @@ import {
   inQuietHours,
   londonNow,
   nextChoreDueAfter,
+  londonWallTimeToIso,
   nextChoreDueDate,
   shiftLocalDateTime,
 } from './schedule';
@@ -157,6 +158,15 @@ describe('chore time rules', () => {
     expect(inQuietHours('23:00', { start: '22:00', end: '07:00' })).toBe(true);
     expect(inQuietHours('06:30', { start: '22:00', end: '07:00' })).toBe(true);
     expect(inQuietHours('12:00', { start: '22:00', end: '07:00' })).toBe(false);
+  });
+
+  it('converts London wall time to UTC across DST', () => {
+    expect(londonWallTimeToIso('2026-07-01T10:00')).toBe(
+      '2026-07-01T09:00:00.000Z'
+    );
+    expect(londonWallTimeToIso('2026-12-01T10:00')).toBe(
+      '2026-12-01T10:00:00.000Z'
+    );
   });
 
   it('shifts reminders across midnight', () => {

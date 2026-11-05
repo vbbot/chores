@@ -339,8 +339,12 @@ export default function SettingsPage() {
       const link = document.createElement('a');
       link.href = url;
       link.download = `chores-export-${londonDateString()}.json`;
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => {
+        link.remove();
+        URL.revokeObjectURL(url);
+      }, 0);
     } catch (err) {
       setReminderStatus(
         err instanceof Error ? err.message : 'Could not export household data.'
@@ -351,8 +355,14 @@ export default function SettingsPage() {
   const sendTestNotification = async () => {
     setPushStatus(null);
     try {
-      await apiFetch('/api/v1/notifications/test', { method: 'POST' });
-      setPushStatus('Test notification sent. Check this device.');
+      const result = await apiFetch<{ sent: number }>('/api/v1/notifications/test', {
+        method: 'POST',
+      });
+      setPushStatus(
+        result.sent > 0
+          ? 'Test notification sent. Check this device.'
+          : 'No device registered yet. Enable notifications on this device first.'
+      );
     } catch (err) {
       setPushStatus(
         err instanceof Error ? err.message : 'Could not send a test notification.'
