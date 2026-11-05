@@ -112,6 +112,13 @@ Place the Firebase service account at:
 The web container listens on port `3000`. The cron container uses the same
 image and calls the web container internally.
 
+The GHCR package is private by default. Either make it public in the package
+settings, or log in on Unraid with a GitHub PAT that has `read:packages`:
+
+```sh
+docker login ghcr.io -u vbbot
+```
+
 ## Verification
 
 ```sh
