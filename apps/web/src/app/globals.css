@@ -33,7 +33,7 @@ body {
   background: var(--background);
   margin: 0;
   padding: 0;
-  font-family: var(--font-source-sans), system-ui, sans-serif;
+  font-family: 'Source Sans 3 Variable', system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }

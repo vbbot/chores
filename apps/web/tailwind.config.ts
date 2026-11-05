@@ -29,7 +29,7 @@ const config: Config = {
         heavy: "2px",
       },
       fontFamily: {
-        sans: ["var(--font-source-sans)", "system-ui", "sans-serif"],
+        sans: ["Source Sans 3 Variable", "system-ui", "sans-serif"],
       },
       transitionTimingFunction: {
         zune: "cubic-bezier(0.2, 0.8, 0.2, 1)",
