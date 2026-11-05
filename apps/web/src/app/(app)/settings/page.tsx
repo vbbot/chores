@@ -219,6 +219,10 @@ export default function SettingsPage() {
 
   const saveReminderSettings = async () => {
     setReminderStatus(null);
+    if (!digestTime || !binsTime || !billTime || !calendarMinutes) {
+      setReminderStatus('Fill in all household reminder times.');
+      return;
+    }
     try {
       await apiFetch('/api/v1/households', {
         method: 'PUT',
@@ -316,6 +320,7 @@ export default function SettingsPage() {
         queryClient.invalidateQueries({ queryKey: queryKeys.members }),
         queryClient.invalidateQueries({ queryKey: queryKeys.household }),
         queryClient.invalidateQueries({ queryKey: queryKeys.chores.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.progress }),
       ]);
     } catch (err) {
       setMemberError(
