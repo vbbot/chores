@@ -1,10 +1,13 @@
-.PHONY: up down logs install dev build test e2e verify
+.PHONY: up up-build down logs install dev build test e2e verify
 
 install:
 	npm install
 
 up:
-	docker compose up -d --build
+	docker compose up -d
+
+up-build:
+	docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 down:
 	docker compose down

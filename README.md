@@ -56,8 +56,16 @@ firebase deploy --only firestore:rules,firestore:indexes
 
 ## Run with Docker
 
+The default compose file pulls the published image:
+
 ```sh
-docker compose up -d --build
+docker compose up -d
+```
+
+Build locally with the build override:
+
+```sh
+make up-build
 ```
 
 Open http://localhost.
@@ -85,7 +93,7 @@ The production deployment is Docker Compose behind a Cloudflare Tunnel.
 4. Run:
 
    ```sh
-   docker compose up -d --build
+   docker compose up -d
    ```
 
 5. Install and authenticate `cloudflared`, create a tunnel, and route the

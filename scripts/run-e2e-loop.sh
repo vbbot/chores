@@ -22,7 +22,7 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 echo "[1/4] Starting stack"
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 echo "[2/4] Waiting for the app and ALTCHA challenge endpoint"
 for _ in $(seq 1 120); do
