@@ -26,11 +26,27 @@ export interface WeekDay {
   completed: number;
 }
 
+export interface MemberBalance {
+  user_id: string;
+  name: string;
+  open_minutes: number;
+  done_minutes: number;
+  open_chores: number;
+  overdue_chores: number;
+}
+
+export interface UnassignedBalance {
+  open_chores: number;
+  open_minutes: number;
+}
+
 export interface ProgressSummary {
   today: string;
   user: MemberProgress;
   household: HouseholdProgress;
   members: MemberProgress[];
+  balance: MemberBalance[];
+  unassigned: UnassignedBalance;
   streaks: ChoreStreak[];
   best_streak: number;
   week: WeekDay[];

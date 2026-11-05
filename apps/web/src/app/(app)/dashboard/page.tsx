@@ -7,10 +7,11 @@ import { ProgressWidget } from '@/components/progress/progress-widget';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { apiFetch } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { dueLabel, londonDateString } from '@/lib/dates';
 import { useApiQuery } from '@/lib/query';
 import { queryKeys } from '@/lib/query-keys';
-import { BinSchedule, ChoreInstance, ProgressSummary } from '@/lib/types';
+import { BinSchedule, ChoreInstance, ProgressSummary, User } from '@/lib/types';
 
 interface CompletionResponse {
   xp_awarded: number;
@@ -21,16 +22,25 @@ interface CompletionResponse {
 export default function DashboardPage() {
   const today = londonDateString();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const choresQuery = useApiQuery<ChoreInstance[]>(
     queryKeys.chores.due(today),
     `/api/v1/chores/instances?status=pending&due_before=${today}`
   );
   const binsQuery = useApiQuery<BinSchedule[]>(queryKeys.bins.tonight, '/api/v1/bins/tonight');
   const progressQuery = useApiQuery<ProgressSummary>(queryKeys.progress, '/api/v1/progress');
+  const membersQuery = useApiQuery<User[]>(queryKeys.members, '/api/v1/households/members');
 
   const chores = choresQuery.data ?? [];
+  const members = membersQuery.data ?? [];
   const tonightsBins = binsQuery.data ?? [];
   const progress = progressQuery.data ?? null;
+
+  const myChores = chores.filter((chore) => chore.assigned_to === user?.id);
+  const openChores = chores.filter((chore) => chore.assigned_to === null);
+  const otherChores = chores.filter(
+    (chore) => chore.assigned_to !== null && chore.assigned_to !== user?.id
+  );
 
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
@@ -219,37 +229,61 @@ export default function DashboardPage() {
             onAction={() => (window.location.href = '/chores')}
           />
         ) : (
-          <div className="space-y-2">
-            {chores.map((chore) => {
-              const overdue = chore.due_date < today;
-              return (
-                <div
-                  key={chore.id}
-                  className={`p-3 border rounded-card bg-background flex items-center justify-between gap-3 ${
-                    overdue ? 'border-destructive' : 'border-border'
-                  }`}
-                >
-                  <div>
-                    <div className="font-medium text-sm">{chore.template_name || 'Task'}</div>
-                    <div
-                      className={`text-xs ${
-                        overdue ? 'text-destructive font-medium' : 'text-secondary'
-                      }`}
-                    >
-                      {dueLabel(chore.due_date, today)}
-                      {chore.room_name ? ` • ${chore.room_name}` : ''}
-                    </div>
-                  </div>
-                  <Button
-                    onClick={() => completeChore(chore.id)}
-                    variant="secondary"
-                    className="text-xs px-3 py-1"
-                  >
-                    Mark done
-                  </Button>
+          <div className="space-y-6">
+            {[
+              { key: 'mine', title: 'Your chores', items: myChores, showOwner: false },
+              { key: 'open', title: 'Up for grabs', items: openChores, showOwner: false },
+              {
+                key: 'others',
+                title: 'Other household chores',
+                items: otherChores,
+                showOwner: true,
+              },
+            ]
+              .filter((group) => group.items.length > 0)
+              .map((group) => (
+                <div key={group.key} className="space-y-2">
+                  <h3 className="text-xs font-semibold text-secondary">{group.title}</h3>
+                  {group.items.map((chore) => {
+                    const overdue = chore.due_date < today;
+                    const owner = chore.assigned_to
+                      ? members.find((member) => member.id === chore.assigned_to)?.name ??
+                        'Someone'
+                      : 'Anyone';
+                    return (
+                      <div
+                        key={chore.id}
+                        className={`p-3 border rounded-card bg-background flex items-center justify-between gap-3 ${
+                          overdue ? 'border-destructive' : 'border-border'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-medium text-sm">
+                            {chore.template_name || 'Task'}
+                          </div>
+                          <div
+                            className={`text-xs ${
+                              overdue ? 'text-destructive font-medium' : 'text-secondary'
+                            }`}
+                          >
+                            {dueLabel(chore.due_date, today)}
+                            {chore.room_name ? ` • ${chore.room_name}` : ''}
+                            {group.showOwner ? ` • ${owner}` : ''}
+                            {chore.task_type === 'one_off' ? ' • One-off' : ''}
+                          </div>
+                        </div>
+                        <Button
+                          onClick={() => completeChore(chore.id)}
+                          variant="secondary"
+                          className="text-xs px-3 py-1"
+                        >
+                          Mark done
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              ))}
           </div>
         )}
       </section>

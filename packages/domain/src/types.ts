@@ -1,4 +1,6 @@
 export type UserRole = 'admin' | 'member';
+export type AssignmentMode = 'anyone' | 'fixed' | 'rotate' | 'balanced';
+export type ChoreTaskType = 'recurring' | 'one_off';
 
 export interface User {
   id: string;
@@ -40,6 +42,11 @@ export interface ChoreTemplate {
   estimated_minutes: number | null;
   priority: 'low' | 'medium' | 'high';
   is_active: boolean;
+  task_type?: ChoreTaskType;
+  assignment_mode?: AssignmentMode;
+  fixed_assignee_id?: string | null;
+  rotation_member_ids?: string[] | null;
+  rotation_last_assignee_id?: string | null;
   next_due_date?: string | null;
   streak_current?: number;
   streak_best?: number;
@@ -51,10 +58,13 @@ export interface ChoreInstance {
   template_id: string;
   household_id: string;
   assigned_to: string | null;
+  assigned_at?: string | null;
+  assigned_by?: string | null;
   completed_by: string | null;
   due_date: string;
   completed_at: string | null;
   status: 'pending' | 'completed' | 'skipped';
+  task_type?: ChoreTaskType;
   notes: string | null;
   xp_awarded?: number;
   on_time?: boolean;

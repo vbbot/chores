@@ -55,7 +55,9 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
 
   // 07-09. Chores: empty state, create dialog, populated list.
   await goTo(page, 'Chores');
-  await expect(page.getByRole('heading', { name: 'Chores' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Chores', exact: true, level: 1 })
+  ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Suggested for your home' })).toBeVisible();
   await shot(page, project, '07-chores-empty');
   const suggestionSection = page
@@ -78,19 +80,50 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await page.selectOption('#chore_freq', 'weekly');
   await shot(page, project, '08-chores-dialog');
   await page.getByRole('button', { name: 'Save chore' }).click();
-  const choreInstance = page
+
+  const dueSection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Due now' }) });
+  const choreInstance = dueSection
     .locator('div.rounded-card')
     .filter({ has: page.getByRole('heading', { name: 'Mop kitchen floor', exact: true }) })
-    .filter({ has: page.getByLabel('Assigned to') })
     .first();
   await expect(choreInstance).toBeVisible();
-  await choreInstance.getByLabel('Assigned to').selectOption({ label: 'E2E Housemate' });
-  await expect(choreInstance.getByLabel('Assigned to')).not.toHaveValue('');
+  await expect(choreInstance.getByText('Assigned to You')).toBeVisible();
+
+  await choreInstance.getByRole('button', { name: 'Assign' }).click();
+  const assignDialog = page.getByRole('dialog', { name: 'Assign this chore' });
+  await expect(assignDialog).toBeVisible();
+  await assignDialog.getByRole('button', { name: 'Anyone' }).click();
+  await expect(choreInstance.getByText('Assigned to Anyone')).toBeVisible();
+
+  await choreInstance.getByRole('button', { name: 'Assign' }).click();
+  await page
+    .getByRole('dialog', { name: 'Assign this chore' })
+    .getByRole('button', { name: 'E2E Housemate' })
+    .click();
+  await expect(choreInstance.getByText('Assigned to You')).toBeVisible();
   await expect(choreInstance.getByRole('button', { name: 'Mark done' })).toBeEnabled();
   await shot(page, project, '09-chores-populated');
   await choreInstance.getByRole('button', { name: 'Mark done' }).click();
   await expect(page.getByRole('status')).toContainText('XP');
-  await expect(page.getByLabel('Assigned to')).toHaveCount(2);
+
+  // One-off task.
+  await page.getByRole('button', { name: 'Add task' }).click();
+  await expect(page.getByRole('heading', { name: 'Add one-off task' })).toBeVisible();
+  await page.fill('#chore_name', 'Call the plumber');
+  await page.getByRole('button', { name: 'Save task' }).click();
+  const oneOff = dueSection
+    .locator('div.rounded-card')
+    .filter({ has: page.getByRole('heading', { name: 'Call the plumber', exact: true }) })
+    .first();
+  await expect(oneOff).toBeVisible();
+  await expect(oneOff.getByText(/One-off/)).toBeVisible();
+  await oneOff.getByRole('button', { name: 'Edit' }).click();
+  await expect(page.getByRole('heading', { name: 'Edit one-off task' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await oneOff.getByRole('button', { name: 'Mark done' }).click();
+  await expect(page.getByRole('status')).toContainText('XP');
 
   const todayLondon = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/London',
@@ -123,6 +156,7 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await page.getByRole('button', { name: 'Change next collection' }).first().click();
   const exceptionDialog = page.getByRole('dialog');
   await expect(exceptionDialog).toBeVisible();
+  await shot(page, project, '10-bins-dialog');
   await exceptionDialog.getByRole('button', { name: 'Save change' }).click();
   await expect(page.getByText(/skipped/)).toBeVisible();
   await page.getByRole('button', { name: 'Undo' }).click();
@@ -137,6 +171,9 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await expect(page.getByText('Fairtrade coffee')).toBeVisible();
   await page.getByRole('checkbox').click();
   await expect(page.getByText('Fairtrade coffee')).toHaveClass(/line-through/);
+  await page.fill('input[placeholder*="Add item"]', 'Oat milk');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.getByText('Oat milk')).toBeVisible();
   await shot(page, project, '12-shopping-populated');
 
   // 13-15. Bills.
@@ -177,6 +214,11 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await page.fill('#note_content', 'On the router');
   await page.getByRole('button', { name: 'Save note' }).click();
   await expect(page.getByRole('heading', { name: 'Wi-Fi password' })).toBeVisible();
+  await expect(page.getByText(/Added by You on/)).toBeVisible();
+  await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
+  await page.fill('#note_content', 'On the router, second shelf');
+  await page.getByRole('button', { name: 'Save note' }).click();
+  await expect(page.getByText(/Updated/)).toBeVisible();
   await shot(page, project, '19-notes');
 
   // 20-21. Settings via the header cog.
@@ -248,6 +290,7 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
 
   const apiKey = process.env.FIREBASE_WEB_API_KEY;
   if (apiKey) {
+
     const signIn = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
       {
@@ -268,4 +311,154 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
     expect(bearer.status()).toBe(200);
     expect((await bearer.json()).email).toBe(email);
   }
+});
+
+test('two-member distribution: fixed, balanced, and rotation', async ({
+  page,
+  browser,
+}, testInfo) => {
+  const project = testInfo.project.name;
+  const emailA = emailFor(`${project}-owner`);
+  const emailB = emailFor(`${project}-partner`);
+
+  await page.goto('/register');
+  await expect(page.getByRole('heading', { name: 'Create your account' })).toBeVisible();
+  await page.fill('#name', 'E2E Owner');
+  await page.fill('#email', emailA);
+  await page.fill('#password', 'TestPassword123');
+  await page.fill('#hh_name', `E2E Shared Home ${project}`);
+  await expect(page.getByRole('button', { name: 'Create account' })).toBeEnabled({
+    timeout: 30_000,
+  });
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.waitForURL('**/setup');
+  await page.getByRole('button', { name: 'Next: Bin collection' }).click();
+  await page.selectOption('#bin_day', '0');
+  await page.getByRole('button', { name: 'Next: Partner invite' }).click();
+  await page.getByRole('button', { name: 'Complete setup' }).click();
+  await page.waitForURL('**/dashboard');
+
+  const household = (await (
+    await page.request.get('/api/v1/households')
+  ).json()) as { invite_code: string };
+
+  const contextB = await browser.newContext();
+  const pageB = await contextB.newPage();
+  await pageB.goto('/register');
+  await pageB.getByRole('button', { name: 'Join existing' }).click();
+  await pageB.fill('#name', 'E2E Partner');
+  await pageB.fill('#email', emailB);
+  await pageB.fill('#password', 'TestPassword123');
+  await pageB.fill('#inv_code', household.invite_code);
+  await expect(pageB.getByRole('button', { name: 'Create account' })).toBeEnabled({
+    timeout: 30_000,
+  });
+  await pageB.getByRole('button', { name: 'Create account' }).click();
+  await pageB.waitForURL('**/dashboard');
+
+  const meA = (await (await page.request.get('/api/v1/auth/me')).json()) as {
+    id: string;
+  };
+  const meB = (await (await pageB.request.get('/api/v1/auth/me')).json()) as {
+    id: string;
+  };
+
+  // Fixed one-off task assigned to the partner.
+  // Reload so the owner's cached member list includes the new partner.
+  await page.goto('/chores');
+  await page.getByRole('button', { name: 'Add task' }).click();
+  await page.fill('#chore_name', 'Return parcel');
+  await page.selectOption('#assignment_mode', 'fixed');
+  await page.selectOption('#fixed_assignee', { label: 'E2E Partner' });
+  await page.getByRole('button', { name: 'Save task' }).click();
+  const ownerDue = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Due now' }) });
+  const fixedTask = ownerDue
+    .locator('div.rounded-card')
+    .filter({ has: page.getByRole('heading', { name: 'Return parcel', exact: true }) })
+    .first();
+  await expect(fixedTask.getByText('Assigned to E2E Partner')).toBeVisible();
+
+  // Full load so the partner's cached chore list reflects the new task.
+  await pageB.goto('/chores');
+  const partnerDue = pageB
+    .locator('section')
+    .filter({ has: pageB.getByRole('heading', { name: 'Due now' }) });
+  const partnerTask = partnerDue
+    .locator('div.rounded-card')
+    .filter({ has: pageB.getByRole('heading', { name: 'Return parcel', exact: true }) })
+    .first();
+  await expect(partnerTask.getByText('Assigned to You')).toBeVisible();
+  await partnerTask.getByRole('button', { name: 'Mark done' }).click();
+  await expect(pageB.getByRole('status')).toContainText('XP');
+
+  // Auto-balance sends the next reusable chore to the lighter member.
+  await goTo(page, 'Chores');
+  await page.getByRole('button', { name: 'Add chore' }).first().click();
+  await page.fill('#chore_name', 'Water plants');
+  await expect(page.locator('#assignment_mode')).toHaveValue('balanced');
+  await page.getByRole('button', { name: 'Save chore' }).click();
+  await expect(
+    page.getByRole('dialog', { name: 'Add recurring chore' })
+  ).toBeHidden({ timeout: 20_000 });
+
+  const pendingAfterBalance = (await (
+    await page.request.get('/api/v1/chores/instances?status=pending')
+  ).json()) as { id: string; template_name?: string; assigned_to: string | null }[];
+  const water = pendingAfterBalance.find(
+    (instance) => instance.template_name === 'Water plants'
+  );
+  expect(water?.assigned_to).toBe(meB.id);
+
+  // Rotation moves the next occurrence to the other member.
+  await page.getByRole('button', { name: 'Add chore' }).first().click();
+  await page.fill('#chore_name', 'Clean bathroom');
+  await page.selectOption('#assignment_mode', 'rotate');
+  await page.getByRole('button', { name: 'Save chore' }).click();
+  await expect(
+    page.getByRole('dialog', { name: 'Add recurring chore' })
+  ).toBeHidden({ timeout: 20_000 });
+
+  const pendingAfterRotate = (await (
+    await page.request.get('/api/v1/chores/instances?status=pending')
+  ).json()) as { id: string; template_name?: string; assigned_to: string | null }[];
+  const bathroom = pendingAfterRotate.find(
+    (instance) => instance.template_name === 'Clean bathroom'
+  );
+  expect(bathroom?.assigned_to).toBe(meA.id);
+
+  await page.request.post(`/api/v1/chores/instances/${bathroom!.id}/complete`, {
+    data: {},
+  });
+
+  const pendingAfterCompletion = (await (
+    await page.request.get('/api/v1/chores/instances?status=pending')
+  ).json()) as { template_name?: string; assigned_to: string | null }[];
+  const nextBathroom = pendingAfterCompletion.find(
+    (instance) => instance.template_name === 'Clean bathroom'
+  );
+  expect(nextBathroom?.assigned_to).toBe(meB.id);
+
+  // Calendar events notify the other household member.
+  const eventResponse = await page.request.post('/api/v1/calendar/events', {
+    data: {
+      title: 'Boiler service',
+      start_time: new Date(Date.now() + 86_400_000).toISOString(),
+    },
+  });
+  expect(eventResponse.status()).toBe(200);
+
+  const notifications = (await (
+    await pageB.request.get('/api/v1/notifications')
+  ).json()) as { type: string; body: string }[];
+  expect(
+    notifications.some(
+      (notification) =>
+        notification.type === 'calendar_event' &&
+        notification.body.includes('Boiler service')
+    )
+  ).toBe(true);
+
+  await contextB.close();
 });

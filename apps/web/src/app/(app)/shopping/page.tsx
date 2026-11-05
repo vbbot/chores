@@ -176,7 +176,7 @@ export default function ShoppingPage() {
         <div className="space-y-8">
           {unchecked.length > 0 && (
             <section className="space-y-2">
-              <h2 className="text-lg font-semibold border-b border-border pb-2">
+              <h2 className="text-sm font-semibold border-b border-border pb-2">
                 To get
               </h2>
               {unchecked.map((item) => (

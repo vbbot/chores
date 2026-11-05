@@ -7,14 +7,36 @@ import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { apiFetch } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { useApiQuery } from '@/lib/query';
 import { queryKeys } from '@/lib/query-keys';
-import { Note } from '@/lib/types';
+import { Note, User } from '@/lib/types';
+
+function noteDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const day = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+  const time = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+  return `${day} at ${time}`;
+}
 
 export default function NotesPage() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const { data, isLoading, error } = useApiQuery<Note[]>(queryKeys.notes, '/api/v1/notes');
+  const membersQuery = useApiQuery<User[]>(queryKeys.members, '/api/v1/households/members');
   const notes = data ?? [];
+  const members = membersQuery.data ?? [];
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
@@ -138,45 +160,63 @@ export default function NotesPage() {
         />
       ) : (
         <div className="space-y-2">
-          {notes.map((note) => (
-            <div key={note.id} className="border border-border rounded-card p-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold text-base flex items-center gap-2">
-                    {note.is_pinned && (
-                      <span className="text-xs font-semibold text-accent">Pinned</span>
-                    )}
-                    {note.title}
-                  </h3>
+          {notes.map((note) => {
+            const author =
+              note.author_id === user?.id
+                ? 'You'
+                : members.find((member) => member.id === note.author_id)?.name ??
+                  'Someone';
+            const created = noteDate(note.created_at);
+            const updated = noteDate(note.updated_at);
+            const edited =
+              note.updated_at && note.updated_at !== note.created_at
+                ? updated
+                : null;
+
+            return (
+              <div key={note.id} className="border border-border rounded-card p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold text-base flex items-center gap-2">
+                      {note.is_pinned && (
+                        <span className="text-xs font-semibold text-accent">Pinned</span>
+                      )}
+                      {note.title}
+                    </h3>
+                    <p className="text-xs text-secondary mt-1">
+                      Added by {author} on {created ?? 'an unknown date'}
+                      {edited ? ` • Updated ${edited}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => copyNote(note)}
+                      className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1"
+                    >
+                      {copiedId === note.id ? 'Copied' : 'Copy'}
+                    </button>
+                    <button
+                      onClick={() => openEditDialog(note)}
+                      className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => deleteNote(note.id)}
+                      className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => copyNote(note)}
-                    className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1"
-                  >
-                    {copiedId === note.id ? 'Copied' : 'Copy'}
-                  </button>
-                  <button
-                    onClick={() => openEditDialog(note)}
-                    className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => deleteNote(note.id)}
-                    className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
-                  >
-                    Delete
-                  </button>
-                </div>
+                {note.content && (
+                  <p className="mt-2 whitespace-pre-wrap text-sm p-2 bg-surface rounded-card border border-border">
+                    {note.content}
+                  </p>
+                )}
               </div>
-              {note.content && (
-                <p className="mt-2 whitespace-pre-wrap text-sm p-2 bg-surface rounded-card border border-border">
-                  {note.content}
-                </p>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

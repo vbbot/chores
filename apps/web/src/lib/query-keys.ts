@@ -7,6 +7,7 @@ export const queryKeys = {
     all: ['chores'] as const,
     templates: ['chores', 'templates'] as const,
     due: (today: string) => ['chores', 'instances', today] as const,
+    pending: ['chores', 'instances', 'pending'] as const,
   },
   bins: {
     all: ['bins'] as const,

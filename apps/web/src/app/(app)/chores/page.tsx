@@ -7,10 +7,19 @@ import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { apiFetch } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { dueLabel, formatUkDate, londonDateString } from '@/lib/dates';
 import { useApiQuery } from '@/lib/query';
 import { queryKeys } from '@/lib/query-keys';
-import { ChoreInstance, ChoreSuggestion, ChoreTemplate, Room, User } from '@/lib/types';
+import {
+  AssignmentMode,
+  ChoreInstance,
+  ChoreSuggestion,
+  ChoreTaskType,
+  ChoreTemplate,
+  Room,
+  User,
+} from '@/lib/types';
 
 const FREQUENCY_LABELS: Record<string, string> = {
   daily: 'Daily',
@@ -19,6 +28,20 @@ const FREQUENCY_LABELS: Record<string, string> = {
   monthly: 'Monthly',
   quarterly: 'Quarterly',
   yearly: 'Yearly',
+};
+
+const MODE_LABELS: Record<AssignmentMode, string> = {
+  balanced: 'Auto-balanced',
+  anyone: 'Anyone',
+  fixed: 'One person',
+  rotate: 'Takes turns',
+};
+
+const MODE_HELP: Record<AssignmentMode, string> = {
+  balanced: 'The next occurrence goes to whoever has the lightest load this week.',
+  anyone: 'No owner. Anyone can claim the chore.',
+  fixed: 'The same person gets every occurrence.',
+  rotate: 'Members take turns in the order you choose.',
 };
 
 function frequencyName(frequency: string): string {
@@ -32,9 +55,30 @@ function frequencyLabel(template: ChoreTemplate): string {
   return frequencyName(template.frequency);
 }
 
+function ownerLabel(
+  instance: ChoreInstance,
+  members: User[],
+  currentUserId?: string
+): string {
+  if (!instance.assigned_to) return 'Anyone';
+  if (instance.assigned_to === currentUserId) return 'You';
+  return members.find((member) => member.id === instance.assigned_to)?.name ?? 'Unknown';
+}
+
+function templateModeLabel(template: ChoreTemplate, members: User[]): string {
+  const mode = template.assignment_mode ?? 'balanced';
+  if (mode === 'fixed') {
+    const name = members.find((member) => member.id === template.fixed_assignee_id)?.name;
+    return name ? `Always ${name}` : 'One person';
+  }
+  return MODE_LABELS[mode];
+}
+
 export default function ChoresPage() {
   const today = londonDateString();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+
   const templatesQuery = useApiQuery<ChoreTemplate[]>(
     queryKeys.chores.templates,
     '/api/v1/chores/templates'
@@ -45,8 +89,8 @@ export default function ChoresPage() {
   );
   const membersQuery = useApiQuery<User[]>(queryKeys.members, '/api/v1/households/members');
   const instancesQuery = useApiQuery<ChoreInstance[]>(
-    queryKeys.chores.due(today),
-    `/api/v1/chores/instances?status=pending&due_before=${today}`
+    queryKeys.chores.pending,
+    '/api/v1/chores/instances?status=pending'
   );
   const suggestionsQuery = useApiQuery<ChoreSuggestion[]>(
     queryKeys.suggestions,
@@ -59,20 +103,47 @@ export default function ChoresPage() {
   const members = membersQuery.data ?? [];
   const suggestions = suggestionsQuery.data ?? [];
 
+  const dueInstances = React.useMemo(
+    () => instances.filter((instance) => instance.due_date <= today),
+    [instances, today]
+  );
+  const upcomingOneOff = React.useMemo(
+    () =>
+      instances.filter(
+        (instance) => instance.task_type === 'one_off' && instance.due_date > today
+      ),
+    [instances, today]
+  );
+  const recurringTemplates = templates.filter(
+    (template) => template.task_type !== 'one_off'
+  );
+
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [scope, setScope] = React.useState<'all' | 'mine' | 'open'>('all');
+
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [taskType, setTaskType] = React.useState<ChoreTaskType>('recurring');
 
   const [name, setName] = React.useState('');
   const [roomId, setRoomId] = React.useState('');
+  const [dueDate, setDueDate] = React.useState(today);
   const [frequency, setFrequency] = React.useState('weekly');
   const [estimatedMinutes, setEstimatedMinutes] = React.useState(15);
   const [priority, setPriority] = React.useState<'low' | 'medium' | 'high'>('medium');
+  const [assignmentMode, setAssignmentMode] = React.useState<AssignmentMode>('balanced');
+  const [fixedAssigneeId, setFixedAssigneeId] = React.useState('');
+  const [rotationMemberIds, setRotationMemberIds] = React.useState<string[]>([]);
   const [isActive, setIsActive] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);
+
+  const [assigningInstance, setAssigningInstance] = React.useState<ChoreInstance | null>(
+    null
+  );
+  const [assignError, setAssignError] = React.useState<string | null>(null);
 
   const refreshChores = async () => {
     await Promise.all([
@@ -82,55 +153,89 @@ export default function ChoresPage() {
     ]);
   };
 
-  const openCreateDialog = (suggestion?: ChoreSuggestion) => {
+  const resetForm = (nextTaskType: ChoreTaskType) => {
     setEditingId(null);
+    setTaskType(nextTaskType);
     setFormError(null);
+    setName('');
+    setRoomId('');
+    setDueDate(today);
+    setFrequency('weekly');
+    setEstimatedMinutes(15);
+    setPriority('medium');
+    setAssignmentMode(members.length > 0 ? 'balanced' : 'anyone');
+    setFixedAssigneeId(members[0]?.id ?? '');
+    setRotationMemberIds(members.map((member) => member.id));
     setIsActive(true);
-    if (suggestion) {
-      setName(suggestion.name);
-      setRoomId(suggestion.room_id ?? '');
-      setFrequency(suggestion.frequency);
-      setEstimatedMinutes(suggestion.estimated_minutes);
-      setPriority(suggestion.priority);
-    } else {
-      setName('');
-      setRoomId('');
-      setFrequency('weekly');
-      setEstimatedMinutes(15);
-      setPriority('medium');
-    }
+  };
+
+  const openCreateDialog = (nextTaskType: ChoreTaskType = 'recurring') => {
+    resetForm(nextTaskType);
+    setDialogOpen(true);
+  };
+
+  const openSuggestion = (suggestion: ChoreSuggestion) => {
+    resetForm('recurring');
+    setName(suggestion.name);
+    setRoomId(suggestion.room_id ?? '');
+    setFrequency(suggestion.frequency);
+    setEstimatedMinutes(suggestion.estimated_minutes);
+    setPriority(suggestion.priority);
     setDialogOpen(true);
   };
 
   const openEditDialog = (template: ChoreTemplate) => {
+    const nextTaskType: ChoreTaskType = template.task_type ?? 'recurring';
     setEditingId(template.id);
+    setTaskType(nextTaskType);
     setName(template.name);
     setRoomId(template.room_id ?? '');
+    setDueDate(template.next_due_date ?? today);
     setFrequency(template.frequency);
     setEstimatedMinutes(template.estimated_minutes ?? 15);
     setPriority(template.priority);
+    setAssignmentMode(template.assignment_mode ?? 'balanced');
+    setFixedAssigneeId(template.fixed_assignee_id ?? members[0]?.id ?? '');
+    setRotationMemberIds(
+      template.rotation_member_ids && template.rotation_member_ids.length > 0
+        ? template.rotation_member_ids
+        : members.map((member) => member.id)
+    );
     setIsActive(template.is_active);
     setFormError(null);
     setDialogOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!name.trim()) {
       setFormError('Give the chore a name.');
       return;
     }
+
     setSubmitting(true);
     setFormError(null);
     try {
-      const body = {
+      const body: Record<string, unknown> = {
         name: name.trim(),
         room_id: roomId || null,
-        frequency,
         estimated_minutes: estimatedMinutes,
         priority,
-        is_active: isActive,
+        assignment_mode: assignmentMode,
+        fixed_assignee_id: assignmentMode === 'fixed' ? fixedAssigneeId || null : null,
+        rotation_member_ids:
+          assignmentMode === 'rotate' ? rotationMemberIds : null,
       };
+
+      if (taskType === 'one_off') {
+        body.task_type = 'one_off';
+        body.due_date = dueDate;
+      } else {
+        body.task_type = 'recurring';
+        body.frequency = frequency;
+        body.is_active = isActive;
+      }
+
       await apiFetch(
         editingId ? `/api/v1/chores/templates/${editingId}` : '/api/v1/chores/templates',
         {
@@ -158,9 +263,6 @@ export default function ChoresPage() {
         method: 'POST',
         body: JSON.stringify({}),
       });
-      queryClient.setQueryData<ChoreInstance[]>(queryKeys.chores.due(today), (prev) =>
-        prev?.filter((instance) => instance.id !== id)
-      );
       setStatusMessage(
         result.streak_current > 1
           ? `Done. +${result.xp_awarded} XP. ${result.streak_current} on time in a row.`
@@ -182,9 +284,6 @@ export default function ChoresPage() {
         method: 'POST',
         body: JSON.stringify({}),
       });
-      queryClient.setQueryData<ChoreInstance[]>(queryKeys.chores.due(today), (prev) =>
-        prev?.filter((instance) => instance.id !== id)
-      );
       setStatusMessage('Chore skipped.');
       await refreshChores();
     } catch (err) {
@@ -194,17 +293,19 @@ export default function ChoresPage() {
     }
   };
 
-  const assignChore = async (id: string, assignedTo: string) => {
+  const assignChore = async (id: string, assignedTo: string | null) => {
     setBusyId(id);
     setActionError(null);
     try {
       await apiFetch(`/api/v1/chores/instances/${id}/assign`, {
         method: 'POST',
-        body: JSON.stringify({ assigned_to: assignedTo || null }),
+        body: JSON.stringify({ assigned_to: assignedTo }),
       });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.chores.all });
+      setAssigningInstance(null);
+      setAssignError(null);
+      await refreshChores();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not reassign this chore.');
+      setAssignError(err instanceof Error ? err.message : 'Could not reassign this chore.');
     } finally {
       setBusyId(null);
     }
@@ -225,9 +326,10 @@ export default function ChoresPage() {
 
   const deleteTemplate = async () => {
     if (!editingId) return;
+    const noun = taskType === 'one_off' ? 'one-off task' : 'recurring chore';
     if (
       !window.confirm(
-        'Delete this recurring chore? Pending occurrences will be removed. Completed history stays.'
+        `Delete this ${noun}? Pending work will be removed. Completed history stays.`
       )
     ) {
       return;
@@ -244,6 +346,20 @@ export default function ChoresPage() {
       setSubmitting(false);
     }
   };
+
+  const toggleRotationMember = (memberId: string) => {
+    setRotationMemberIds((previous) =>
+      previous.includes(memberId)
+        ? previous.filter((id) => id !== memberId)
+        : [...previous, memberId]
+    );
+  };
+
+  const filteredDue = dueInstances.filter((instance) => {
+    if (scope === 'mine') return instance.assigned_to === user?.id;
+    if (scope === 'open') return instance.assigned_to === null;
+    return true;
+  });
 
   const loading =
     !templatesQuery.data &&
@@ -283,12 +399,19 @@ export default function ChoresPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Chores</h1>
-          <p className="text-sm text-secondary">Due work, suggestions, and the recurring schedule.</p>
+          <p className="text-sm text-secondary">
+            Due work, one-off tasks, and the recurring schedule.
+          </p>
         </div>
-        <Button onClick={() => openCreateDialog()}>Add chore</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => openCreateDialog('one_off')} variant="secondary">
+            Add task
+          </Button>
+          <Button onClick={() => openCreateDialog('recurring')}>Add chore</Button>
+        </div>
       </div>
 
       {(actionError || error) && (
@@ -303,25 +426,52 @@ export default function ChoresPage() {
       )}
 
       <section className="space-y-3">
-        <div className="flex items-baseline justify-between border-b border-border pb-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-2">
           <h2 className="text-lg font-semibold">Due now</h2>
-          <span className="text-xs text-secondary">
-            {instances.length} pending
-          </span>
+          <span className="text-xs text-secondary">{dueInstances.length} pending</span>
         </div>
 
-        {instances.length === 0 ? (
+        {members.length > 1 && (
+          <div className="flex w-fit border border-border rounded-card p-1">
+            {[
+              { key: 'all' as const, label: 'All' },
+              { key: 'mine' as const, label: 'Mine' },
+              { key: 'open' as const, label: 'Up for grabs' },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setScope(item.key)}
+                aria-pressed={scope === item.key}
+                className={`min-h-[44px] px-3 text-xs rounded-card transition-colors ${
+                  scope === item.key
+                    ? 'bg-surface text-foreground font-semibold'
+                    : 'text-secondary hover:text-foreground'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {filteredDue.length === 0 ? (
           <EmptyState
-            title="Nothing pending"
-            description="No chores are due today or overdue."
-            actionLabel="Add a chore"
-            onAction={() => openCreateDialog()}
+            title={scope === 'mine' ? 'Nothing assigned to you' : 'Nothing due'}
+            description={
+              scope === 'mine'
+                ? 'You have no chores due today or overdue.'
+                : 'No chores are due today or overdue.'
+            }
+            actionLabel="Add a one-off task"
+            onAction={() => openCreateDialog('one_off')}
           />
         ) : (
           <div className="space-y-2">
-            {instances.map((instance) => {
+            {filteredDue.map((instance) => {
               const overdue = instance.due_date < today;
               const busy = busyId === instance.id;
+              const oneOff = instance.task_type === 'one_off';
               return (
                 <div
                   key={instance.id}
@@ -329,57 +479,68 @@ export default function ChoresPage() {
                     overdue ? 'border-destructive' : 'border-border'
                   }`}
                 >
-                  <div>
-                    <h3 className="font-semibold text-base">{instance.template_name || 'Task'}</h3>
-                    <p
-                      className={`text-xs mt-0.5 ${
-                        overdue ? 'text-destructive font-medium' : 'text-secondary'
-                      }`}
-                    >
-                      {dueLabel(instance.due_date, today)}
-                      {instance.room_name ? ` • ${instance.room_name}` : ''}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap items-end gap-2">
-                    <div className="flex-1 min-w-[10rem] max-w-xs">
-                      <label
-                        htmlFor={`assign-${instance.id}`}
-                        className="block text-xs text-secondary mb-1"
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="font-semibold text-base">{instance.template_name || 'Task'}</h3>
+                      <p
+                        className={`text-xs mt-0.5 ${
+                          overdue ? 'text-destructive font-medium' : 'text-secondary'
+                        }`}
                       >
-                        Assigned to
-                      </label>
-                      <select
-                        id={`assign-${instance.id}`}
-                        value={instance.assigned_to ?? ''}
-                        disabled={busy}
-                        onChange={(e) => assignChore(instance.id, e.target.value)}
-                        className="w-full h-11 px-2 border border-border rounded-card bg-background text-base"
-                      >
-                        <option value="">Unassigned</option>
-                        {members.map((member) => (
-                          <option key={member.id} value={member.id}>
-                            {member.name}
-                          </option>
-                        ))}
-                      </select>
+                        {dueLabel(instance.due_date, today)}
+                        {instance.room_name ? ` • ${instance.room_name}` : ''}
+                        {oneOff ? ' • One-off' : ''}
+                      </p>
+                      <p className="text-xs text-secondary mt-1">
+                        Assigned to{' '}
+                        <span className="text-foreground font-medium">
+                          {ownerLabel(instance, members, user?.id)}
+                        </span>
+                      </p>
                     </div>
-                    <Button
-                      onClick={() => completeChore(instance.id)}
-                      variant="secondary"
-                      className="text-xs px-3 py-1"
-                      disabled={busy}
-                    >
-                      Mark done
-                    </Button>
-                    <Button
-                      onClick={() => skipChore(instance.id)}
-                      variant="secondary"
-                      className="text-xs px-3 py-1"
-                      disabled={busy}
-                    >
-                      Skip
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        onClick={() => completeChore(instance.id)}
+                        variant="secondary"
+                        className="text-xs px-3 py-1"
+                        disabled={busy}
+                      >
+                        Mark done
+                      </Button>
+                      <Button
+                        onClick={() => skipChore(instance.id)}
+                        variant="secondary"
+                        className="text-xs px-3 py-1"
+                        disabled={busy}
+                      >
+                        Skip
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAssigningInstance(instance);
+                          setAssignError(null);
+                        }}
+                        disabled={busy}
+                        className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1 disabled:opacity-50"
+                      >
+                        Assign
+                      </button>
+                      {oneOff && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const template = templates.find(
+                              (item) => item.id === instance.template_id
+                            );
+                            if (template) openEditDialog(template);
+                          }}
+                          className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1"
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -387,6 +548,49 @@ export default function ChoresPage() {
           </div>
         )}
       </section>
+
+      {upcomingOneOff.length > 0 && (
+        <section className="space-y-3">
+          <div className="border-b border-border pb-2">
+            <h2 className="text-lg font-semibold">One-off tasks</h2>
+            <p className="text-xs text-secondary">Scheduled for a future date.</p>
+          </div>
+          <div className="space-y-2">
+            {upcomingOneOff.map((instance) => (
+              <div
+                key={instance.id}
+                className="border border-border rounded-card p-3 flex flex-wrap items-start justify-between gap-3"
+              >
+                <div>
+                  <h3 className="font-semibold text-base">{instance.template_name || 'Task'}</h3>
+                  <p className="text-xs text-secondary mt-0.5">
+                    {formatUkDate(instance.due_date)}
+                    {instance.room_name ? ` • ${instance.room_name}` : ''}
+                  </p>
+                  <p className="text-xs text-secondary mt-1">
+                    Assigned to{' '}
+                    <span className="text-foreground font-medium">
+                      {ownerLabel(instance, members, user?.id)}
+                    </span>
+                  </p>
+                </div>
+                <Button
+                  onClick={() => {
+                    const template = templates.find(
+                      (item) => item.id === instance.template_id
+                    );
+                    if (template) openEditDialog(template);
+                  }}
+                  variant="secondary"
+                  className="text-xs px-3 py-1"
+                >
+                  Edit
+                </Button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {suggestions.length > 0 && (
         <section className="space-y-3">
@@ -412,7 +616,7 @@ export default function ChoresPage() {
                 </div>
                 <div className="flex gap-2">
                   <Button
-                    onClick={() => openCreateDialog(suggestion)}
+                    onClick={() => openSuggestion(suggestion)}
                     className="text-xs px-3 py-1"
                   >
                     Add chore
@@ -436,16 +640,16 @@ export default function ChoresPage() {
           <h2 className="text-lg font-semibold">Schedule</h2>
           <p className="text-xs text-secondary">The recurring rules that create due chores.</p>
         </div>
-        {templates.length === 0 ? (
+        {recurringTemplates.length === 0 ? (
           <EmptyState
             title="No recurring chores yet"
             description="Create a recurring chore and it will create due work on its own schedule."
             actionLabel="Add your first chore"
-            onAction={() => openCreateDialog()}
+            onAction={() => openCreateDialog('recurring')}
           />
         ) : (
           <div className="space-y-2">
-            {templates.map((template) => {
+            {recurringTemplates.map((template) => {
               const roomName = rooms.find((room) => room.id === template.room_id)?.name;
               return (
                 <div
@@ -467,6 +671,7 @@ export default function ChoresPage() {
                         : ''}
                     </p>
                     <p className="text-xs text-secondary mt-1">
+                      {templateModeLabel(template, members)} •{' '}
                       {template.next_due_date
                         ? `Next due ${formatUkDate(template.next_due_date)}`
                         : 'Next due not scheduled'}
@@ -492,7 +697,15 @@ export default function ChoresPage() {
       <Dialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        title={editingId ? 'Edit recurring chore' : 'Add recurring chore'}
+        title={
+          editingId
+            ? taskType === 'one_off'
+              ? 'Edit one-off task'
+              : 'Edit recurring chore'
+            : taskType === 'one_off'
+              ? 'Add one-off task'
+              : 'Add recurring chore'
+        }
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           {formError && (
@@ -506,14 +719,14 @@ export default function ChoresPage() {
 
           <div>
             <label htmlFor="chore_name" className="block text-sm font-medium mb-1">
-              Chore name
+              {taskType === 'one_off' ? 'Task name' : 'Chore name'}
             </label>
             <Input
               id="chore_name"
               required
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Deep clean the oven"
+              onChange={(event) => setName(event.target.value)}
+              placeholder={taskType === 'one_off' ? 'Call the plumber' : 'Deep clean the oven'}
             />
           </div>
 
@@ -524,7 +737,7 @@ export default function ChoresPage() {
             <select
               id="chore_room"
               value={roomId}
-              onChange={(e) => setRoomId(e.target.value)}
+              onChange={(event) => setRoomId(event.target.value)}
               className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
             >
               <option value="">No specific room</option>
@@ -536,62 +749,182 @@ export default function ChoresPage() {
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {taskType === 'one_off' ? (
             <div>
-              <label htmlFor="chore_freq" className="block text-sm font-medium mb-1">
-                Frequency
-              </label>
-              <select
-                id="chore_freq"
-                value={frequency}
-                onChange={(e) => setFrequency(e.target.value)}
-                className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
-              >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="biweekly">Fortnightly</option>
-                <option value="monthly">Monthly</option>
-                <option value="quarterly">Quarterly</option>
-                <option value="yearly">Yearly</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor="chore_mins" className="block text-sm font-medium mb-1">
-                Estimated mins
+              <label htmlFor="chore_due" className="block text-sm font-medium mb-1">
+                Due date
               </label>
               <Input
-                id="chore_mins"
-                type="number"
-                min="1"
-                value={estimatedMinutes}
-                onChange={(e) => setEstimatedMinutes(Number(e.target.value))}
+                id="chore_due"
+                type="date"
+                required
+                value={dueDate}
+                onChange={(event) => setDueDate(event.target.value)}
               />
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="chore_freq" className="block text-sm font-medium mb-1">
+                  Frequency
+                </label>
+                <select
+                  id="chore_freq"
+                  value={frequency}
+                  onChange={(event) => setFrequency(event.target.value)}
+                  className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="biweekly">Fortnightly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="chore_mins" className="block text-sm font-medium mb-1">
+                  Estimated mins
+                </label>
+                <Input
+                  id="chore_mins"
+                  type="number"
+                  min="1"
+                  value={estimatedMinutes}
+                  onChange={(event) => setEstimatedMinutes(Number(event.target.value))}
+                />
+              </div>
+            </div>
+          )}
+
+          {taskType === 'one_off' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="task_mins" className="block text-sm font-medium mb-1">
+                  Estimated mins
+                </label>
+                <Input
+                  id="task_mins"
+                  type="number"
+                  min="1"
+                  value={estimatedMinutes}
+                  onChange={(event) => setEstimatedMinutes(Number(event.target.value))}
+                />
+              </div>
+              <div>
+                <label htmlFor="task_priority" className="block text-sm font-medium mb-1">
+                  Priority
+                </label>
+                <select
+                  id="task_priority"
+                  value={priority}
+                  onChange={(event) =>
+                    setPriority(event.target.value as 'low' | 'medium' | 'high')
+                  }
+                  className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {taskType === 'recurring' && (
+            <div>
+              <label htmlFor="chore_priority" className="block text-sm font-medium mb-1">
+                Priority
+              </label>
+              <select
+                id="chore_priority"
+                value={priority}
+                onChange={(event) =>
+                  setPriority(event.target.value as 'low' | 'medium' | 'high')
+                }
+                className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          )}
 
           <div>
-            <label htmlFor="chore_priority" className="block text-sm font-medium mb-1">
-              Priority
+            <label htmlFor="assignment_mode" className="block text-sm font-medium mb-1">
+              Who does this?
             </label>
             <select
-              id="chore_priority"
-              value={priority}
-              onChange={(e) => setPriority(e.target.value as 'low' | 'medium' | 'high')}
+              id="assignment_mode"
+              value={assignmentMode}
+              onChange={(event) =>
+                setAssignmentMode(event.target.value as AssignmentMode)
+              }
               className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
             >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
+              <option value="balanced">Balance automatically</option>
+              <option value="anyone">Anyone</option>
+              <option value="fixed">One person</option>
+              <option value="rotate">Take turns</option>
             </select>
+            <p className="text-xs text-secondary mt-1">{MODE_HELP[assignmentMode]}</p>
           </div>
 
-          {editingId && (
+          {assignmentMode === 'fixed' && (
+            <div>
+              <label htmlFor="fixed_assignee" className="block text-sm font-medium mb-1">
+                Person
+              </label>
+              <select
+                id="fixed_assignee"
+                value={fixedAssigneeId}
+                onChange={(event) => setFixedAssigneeId(event.target.value)}
+                className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
+              >
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {assignmentMode === 'rotate' && (
+            <fieldset>
+              <legend className="block text-sm font-medium mb-2">
+                Members in the rotation
+              </legend>
+              <div className="space-y-2">
+                {members.map((member) => (
+                  <label
+                    key={member.id}
+                    className="flex items-center gap-2 min-h-[44px] text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={rotationMemberIds.includes(member.id)}
+                      onChange={() => toggleRotationMember(member.id)}
+                      className="w-4 h-4 rounded"
+                    />
+                    {member.name}
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-secondary">
+                Leave all unchecked to include everyone.
+              </p>
+            </fieldset>
+          )}
+
+          {editingId && taskType === 'recurring' && (
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
                 id="chore_active"
                 checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
+                onChange={(event) => setIsActive(event.target.checked)}
                 className="w-4 h-4 rounded"
               />
               <label htmlFor="chore_active" className="text-sm font-medium">
@@ -618,11 +951,61 @@ export default function ChoresPage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={submitting}>
-                {submitting ? 'Saving...' : 'Save chore'}
+                {submitting ? 'Saving...' : taskType === 'one_off' ? 'Save task' : 'Save chore'}
               </Button>
             </div>
           </div>
         </form>
+      </Dialog>
+
+      <Dialog
+        open={assigningInstance !== null}
+        onClose={() => {
+          setAssigningInstance(null);
+          setAssignError(null);
+        }}
+        title="Assign this chore"
+      >
+        <div className="space-y-2">
+          {assignError && (
+            <div
+              role="alert"
+              className="p-3 text-sm rounded-card border border-destructive text-destructive"
+            >
+              {assignError}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() =>
+              assigningInstance && assignChore(assigningInstance.id, null)
+            }
+            className={`w-full min-h-[44px] px-3 text-left text-sm rounded-card border transition-colors ${
+              assigningInstance?.assigned_to === null
+                ? 'border-accent text-accent bg-surface font-semibold'
+                : 'border-border hover:bg-surface'
+            }`}
+          >
+            Anyone
+          </button>
+          {members.map((member) => (
+            <button
+              key={member.id}
+              type="button"
+              onClick={() =>
+                assigningInstance && assignChore(assigningInstance.id, member.id)
+              }
+              className={`w-full min-h-[44px] px-3 text-left text-sm rounded-card border transition-colors ${
+                assigningInstance?.assigned_to === member.id
+                  ? 'border-accent text-accent bg-surface font-semibold'
+                  : 'border-border hover:bg-surface'
+              }`}
+            >
+              {member.name}
+              {member.id === user?.id ? ' (you)' : ''}
+            </button>
+          ))}
+        </div>
       </Dialog>
     </div>
   );
