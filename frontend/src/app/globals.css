@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #FFFFFF;
+  --foreground: #0A0A0A;
+  --surface: #FAFAFA;
+  --border: #E5E5E5;
+  --secondary: #737373;
+  --destructive: #DC2626;
+  --success: #16A34A;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0A0A0A;
+    --foreground: #FAFAFA;
+    --surface: #141414;
+    --border: #262626;
+    --secondary: #737373;
+    --destructive: #EF4444;
+    --success: #22C55E;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+a, button, summary, select, input[type="checkbox"], input[type="radio"], label[for] {
+  cursor: pointer;
+}
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+}
