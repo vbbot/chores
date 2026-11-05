@@ -7,6 +7,7 @@ import {
   londonNow,
   nextChoreDueAfter,
   nextChoreDueDate,
+  shiftLocalDateTime,
 } from './schedule';
 
 describe('first chore due date', () => {
@@ -156,5 +157,12 @@ describe('chore time rules', () => {
     expect(inQuietHours('23:00', { start: '22:00', end: '07:00' })).toBe(true);
     expect(inQuietHours('06:30', { start: '22:00', end: '07:00' })).toBe(true);
     expect(inQuietHours('12:00', { start: '22:00', end: '07:00' })).toBe(false);
+  });
+
+  it('shifts reminders across midnight', () => {
+    expect(shiftLocalDateTime('2026-11-05', '00:30', -60)).toEqual({
+      date: '2026-11-04',
+      time: '23:30',
+    });
   });
 });
