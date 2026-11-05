@@ -1,4 +1,5 @@
 export * from './types';
+export * from './assignment';
 export * from './dates';
 export * from './bins';
 export * from './bills';

@@ -79,6 +79,7 @@ export function Nav() {
     } else if (href === '/chores') {
       queries.push(
         { key: queryKeys.chores.templates, endpoint: '/api/v1/chores/templates' },
+        { key: queryKeys.chores.pending, endpoint: '/api/v1/chores/instances?status=pending' },
         { key: queryKeys.chores.due(today), endpoint: `/api/v1/chores/instances?status=pending&due_before=${today}` },
         { key: queryKeys.members, endpoint: '/api/v1/households/members' },
         { key: queryKeys.suggestions, endpoint: '/api/v1/suggestions' },

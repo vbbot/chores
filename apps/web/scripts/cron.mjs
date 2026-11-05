@@ -24,6 +24,9 @@ async function trigger(path) {
 cron.schedule('5 0 * * *', () => trigger('/api/cron/chores'), {
   timezone: 'Europe/London',
 });
+cron.schedule('0 7 * * *', () => trigger('/api/cron/chore-reminders'), {
+  timezone: 'Europe/London',
+});
 cron.schedule('0 19 * * *', () => trigger('/api/cron/bin-reminders'), {
   timezone: 'Europe/London',
 });

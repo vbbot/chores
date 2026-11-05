@@ -34,11 +34,13 @@ export async function suggestionsFor(householdId: string): Promise<ChoreSuggesti
     month,
     today,
     rooms: rooms.map((room) => ({ id: room.id, name: room.name })),
-    templates: templates.map((template) => ({
-      id: template.id,
-      name: template.name,
-      room_id: template.room_id,
-    })),
+    templates: templates
+      .filter((template) => template.task_type !== 'one_off')
+      .map((template) => ({
+        id: template.id,
+        name: template.name,
+        room_id: template.room_id,
+      })),
     instances: instances.map((instance) => ({
       template_id: instance.template_id,
       due_date: instance.due_date,

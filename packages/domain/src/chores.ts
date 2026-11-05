@@ -27,6 +27,25 @@ export function calculateNextDueDate(
   }
 }
 
+/**
+ * Advances from the scheduled date, not from today.
+ * Missed occurrences are skipped so late completion does not drift the cadence.
+ */
+export function calculateNextDueAfter(
+  frequency: string,
+  frequencyDays: number | null,
+  fromDate: string,
+  today: string
+): string {
+  let next = calculateNextDueDate(frequency, frequencyDays, fromDate);
+  let guard = 0;
+  while (next <= today && guard < 800) {
+    next = calculateNextDueDate(frequency, frequencyDays, next);
+    guard += 1;
+  }
+  return next;
+}
+
 export function frequencyLabel(frequency: string, frequencyDays: number | null): string {
   if (frequency === 'every_n_days') {
     return `Every ${frequencyDays ?? 3} days`;

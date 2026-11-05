@@ -271,6 +271,8 @@ Bins alert:
 Today's chores:
 
 - Section heading plus `View all chores`.
+- Groups: `Your chores`, `Up for grabs`, `Other household chores`.
+- Owner shows only on the other-household group.
 - 1px rows.
 - Overdue uses destructive border and text.
 - Completion feedback shows XP and streak.
@@ -286,21 +288,73 @@ Progress section:
 
 ### Chores
 
-Three sections:
+Four sections:
 
 1. Due now.
-2. Suggested for your home.
-3. Schedule.
+2. One-off tasks scheduled for a future date.
+3. Suggested for your home.
+4. Schedule.
 
 `Recurring templates` is renamed to `Schedule` with the explanation:
 
 > The recurring rules that create due chores.
+
+Two create actions:
+
+- `Add task` creates a one-off task with a due date.
+- `Add chore` creates a recurring chore.
+
+Due rows show:
+
+- Name.
+- Due label.
+- Room.
+- `One-off` when applicable.
+- Owner as `You`, a name, or `Anyone`.
+- `Mark done`, `Skip`, and `Assign`.
+- `Edit` for one-off tasks.
+
+Member filter appears when the household has more than one person:
+
+- `All`
+- `Mine`
+- `Up for grabs`
+
+#### Assignment modes
+
+Every chore chooses one mode:
+
+| Mode | Behaviour |
+|---|---|
+| Auto-balanced | Next occurrence goes to the member with the lowest rolling load. |
+| Anyone | No owner. Anyone can claim it. |
+| One person | The same member gets every occurrence. |
+| Takes turns | Members rotate in a chosen order. |
+
+Auto-balanced load:
+
+```
+open assigned minutes
++ minutes completed by the member in the last seven days
+```
+
+Ties break on fewer open chores, then longest time since assignment.
+
+Assignment stays soft. Anyone can complete any chore. XP goes to the completer. Assignment never awards XP.
+
+One-off tasks:
+
+- Use the same assignment modes.
+- Leave the Schedule after completion.
+- Keep completed history.
+- Can be edited or deleted while pending.
 
 Schedule rows show:
 
 - Name.
 - Room.
 - Frequency.
+- Assignment mode, or `Always [Name]` for fixed ownership.
 - Next due date.
 - Current on-time streak.
 - `Edit` action.
@@ -308,10 +362,14 @@ Schedule rows show:
 Edit dialog:
 
 - Same fields as create.
-- Title changes to `Edit recurring chore`.
-- Active checkbox pauses the recurring rule.
+- Title changes to `Edit recurring chore` or `Edit one-off task`.
+- Assignment mode selector.
+- Fixed owner selector, or a rotation member checklist.
+- Active checkbox pauses a recurring rule.
 - Delete removes pending occurrences and keeps completed history.
 - Frequency changes recalculate the next due date.
+
+Recurrence advances from the scheduled due date, not the completion date. Missed occurrences are skipped so the cadence does not drift and no backlog builds.
 
 Suggestions:
 
@@ -328,6 +386,8 @@ Suggestions:
 - Explains that bins go out the evening before.
 - Next collection date is prominent.
 - Schedule rows are quiet.
+- Each schedule has `Change next collection` and `Delete`.
+- Delete confirms first and removes that schedule's exceptions.
 - Scheduled changes use 1px rows.
 - Dashboard owns the tonight completion action.
 
@@ -336,6 +396,7 @@ Suggestions:
 - Add form uses the same 1px border as the list rows.
 - Unchecked items are grouped under `To get`.
 - Checked items are grouped under `In the basket`.
+- Both group headings use the same type size. `In the basket` uses secondary text.
 - Rows use 1px borders.
 - Remove has a 44px target.
 
@@ -354,11 +415,14 @@ Suggestions:
 - Event rows use 1px borders.
 - No fake month grid until the data justifies it.
 - Add event uses a dialog.
+- Creating an event notifies the other household members.
+- If the event is assigned to one person, only that person is notified.
 
 ### Notes
 
 - Pinned notes first.
 - `Pinned` is small accent text, not a pill.
+- Each note shows who added it, the creation date and time, and the last updated date and time when edited.
 - Add and edit share one dialog.
 - Copy content action.
 - Delete confirmation.
@@ -370,10 +434,12 @@ Sections:
 1. Personal level, large number, accent progress bar.
 2. Household level, same treatment.
 3. This week table: member, chores, bins, XP.
-4. Seven-day completion strip.
-5. On-time streaks.
+4. Workload balance table: member, minutes done in the last seven days, open minutes and count, overdue count.
+5. Unassigned summary: chores and estimated minutes up for grabs.
+6. Seven-day completion strip.
+7. On-time streaks.
 
-Uses quiet sections with 1px dividers. No 2px card grid.
+Uses quiet sections with 1px dividers. No 2px card grid. Workload balance is informational, never a leaderboard or fairness score.
 
 ### Settings
 
@@ -388,6 +454,13 @@ Sections separated by 1px rules:
 - Calendar feeds
 - Notifications
 - Account and sign out
+
+Delivery:
+
+- Daily 07:00 digest names only the member's due and overdue chores.
+- Unassigned due chores appear once as `Up for grabs`.
+- Manual assignment sends one immediate notification to the new owner.
+- Automatic assignment does not send a notification; the digest covers it.
 
 Appearance:
 
@@ -428,6 +501,14 @@ Rows:
 - 4px radius.
 - 12px padding.
 - 44px actions.
+
+Dialogs:
+
+- Render into a portal on `document.body`.
+- Fixed overlay covers the viewport.
+- Panel caps at 90vh and scrolls inside.
+- Escape closes and focus returns to the opener.
+- The page-enter animation must not leave a transform on the route container, because that would break fixed positioning.
 
 Empty states:
 

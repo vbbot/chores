@@ -17,6 +17,7 @@ import {
   weekdayIndex,
 } from '@chores/domain';
 
+import { balanceFromData } from './chores';
 import { householdCollection } from './households';
 import { listMembers } from './users';
 
@@ -129,6 +130,7 @@ export async function householdProgress(
   const totalBinsWeek = memberRows.reduce((sum, row) => sum + row.bins_week, 0);
 
   const streaks: ChoreStreak[] = templates
+    .filter((template) => template.task_type !== 'one_off')
     .map((template) => {
       const history = instances.filter(
         (instance) => instance.template_id === template.id
@@ -151,6 +153,8 @@ export async function householdProgress(
     ).length,
   }));
 
+  const balance = balanceFromData(instances, templates, members, today);
+
   return {
     today,
     user,
@@ -161,6 +165,8 @@ export async function householdProgress(
       ...levelForXp(totalXp),
     },
     members: [...memberRows].sort((a, b) => a.name.localeCompare(b.name)),
+    balance: balance.members,
+    unassigned: balance.unassigned,
     streaks,
     best_streak: streaks.reduce((best, streak) => Math.max(best, streak.best), 0),
     week,

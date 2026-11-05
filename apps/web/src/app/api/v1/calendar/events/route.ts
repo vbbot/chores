@@ -5,6 +5,7 @@ import {
   requireSameOrigin,
   requireUserHousehold,
   route,
+  sendCalendarEventNotification,
 } from '@chores/server';
 import { parseBody } from '@/lib/server/http';
 
@@ -23,6 +24,19 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const { user, householdId } = await requireUserHousehold(request);
     const data = await parseBody(request, calendarEventCreateSchema);
-    return Response.json(await createCalendarEvent(householdId, user.id, data));
+    const event = await createCalendarEvent(householdId, user.id, data);
+
+    try {
+      await sendCalendarEventNotification({
+        householdId,
+        actorId: user.id,
+        actorName: user.name,
+        event,
+      });
+    } catch (error) {
+      console.error('Could not send calendar event notification', error);
+    }
+
+    return Response.json(event);
   });
 }

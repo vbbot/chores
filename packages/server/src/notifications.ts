@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Notification } from '@chores/domain';
+import type { CalendarEvent, Notification } from '@chores/domain';
+import { formatUkDate, londonToday } from '@chores/domain';
 
 import { dbAdmin, messagingAdmin } from './firebase';
 import { binsTonight } from './bins';
+import { listChoreInstances } from './chores';
 import { listMembers, deviceTokens, removeDeviceToken } from './users';
 
 function notificationFromDoc(id: string, data: Record<string, unknown>): Notification {
@@ -31,9 +33,10 @@ export async function markAllNotificationsRead(userId: string): Promise<void> {
 
 export async function addNotification(
   userId: string,
-  input: { type: string; title: string; body: string; data?: Record<string, unknown> | null }
+  input: { type: string; title: string; body: string; data?: Record<string, unknown> | null },
+  options?: { id?: string }
 ): Promise<void> {
-  await notificationsCollection(userId).doc(randomUUID()).set({
+  await notificationsCollection(userId).doc(options?.id ?? randomUUID()).set({
     user_id: userId,
     type: input.type,
     title: input.title,
@@ -42,6 +45,194 @@ export async function addNotification(
     is_read: false,
     created_at: new Date().toISOString(),
   });
+}
+
+async function sendPushToUser(
+  userId: string,
+  input: { title: string; body: string; url: string }
+): Promise<number> {
+  const tokens = await deviceTokens(userId);
+  if (tokens.length === 0) return 0;
+
+  let sent = 0;
+  for (let index = 0; index < tokens.length; index += 400) {
+    const chunk = tokens.slice(index, index + 400);
+    const response = await messagingAdmin().sendEachForMulticast({
+      tokens: chunk,
+      notification: { title: input.title, body: input.body },
+      data: { url: input.url },
+      webpush: {
+        fcmOptions: { link: input.url },
+        notification: { icon: '/icons/icon-192.png', badge: '/icons/icon-192.png' },
+      },
+    });
+    sent += response.successCount;
+
+    await Promise.all(
+      response.responses.map(async (result, resultIndex) => {
+        const code = result.error?.code;
+        if (
+          code === 'messaging/registration-token-not-registered' ||
+          code === 'messaging/invalid-registration-token'
+        ) {
+          await removeDeviceToken(userId, chunk[resultIndex]);
+        }
+      })
+    );
+  }
+
+  return sent;
+}
+
+function choreList(names: string[]): string {
+  if (names.length <= 3) return names.join(', ');
+  return `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+}
+
+export async function sendChoreReminders(): Promise<number> {
+  const today = londonToday();
+  const households = await dbAdmin().collection('households').get();
+  let sent = 0;
+
+  for (const household of households.docs) {
+    const householdId = household.id;
+    const pending = await listChoreInstances(householdId, { status: 'pending' });
+    const due = pending.filter((instance) => instance.due_date <= today);
+    if (due.length === 0) continue;
+
+    const members = await listMembers(householdId);
+    const unassigned = due.filter((instance) => !instance.assigned_to);
+
+    for (const member of members) {
+      const mine = due.filter((instance) => instance.assigned_to === member.id);
+      const parts: string[] = [];
+
+      if (mine.length > 0) {
+        const overdue = mine.filter((instance) => instance.due_date < today).length;
+        parts.push(
+          `${mine.length} chore${mine.length === 1 ? '' : 's'}: ${choreList(
+            mine.map((instance) => instance.template_name ?? 'Task')
+          )}.`
+        );
+        if (overdue > 0) {
+          parts.push(`${overdue} overdue.`);
+        }
+      }
+
+      if (unassigned.length > 0) {
+        parts.push(
+          `${unassigned.length} up for grabs: ${choreList(
+            unassigned.map((instance) => instance.template_name ?? 'Task')
+          )}.`
+        );
+      }
+
+      if (parts.length === 0) continue;
+
+      const title = mine.length > 0 ? "Today's chores" : 'Chores up for grabs';
+      const body = parts.join(' ');
+      try {
+        await addNotification(
+          member.id,
+          {
+            type: 'chore_reminder',
+            title,
+            body,
+            data: { url: '/chores' },
+          },
+          { id: `chore_reminder_${today}` }
+        );
+        sent += await sendPushToUser(member.id, {
+          title,
+          body,
+          url: '/chores',
+        });
+      } catch (error) {
+        console.error(`Could not send chore reminder to ${member.id}`, error);
+      }
+    }
+  }
+
+  return sent;
+}
+
+export async function sendAssignmentNotification(input: {
+  userId: string;
+  choreName: string;
+  dueDate: string;
+  assignedByName: string;
+}): Promise<void> {
+  const title = 'Chore assigned to you';
+  const body = `${input.assignedByName} assigned "${input.choreName}" to you for ${formatUkDate(
+    input.dueDate
+  )}.`;
+
+  await addNotification(input.userId, {
+    type: 'chore_assigned',
+    title,
+    body,
+    data: { url: '/chores' },
+  });
+  await sendPushToUser(input.userId, { title, body, url: '/chores' });
+}
+
+function eventWhen(event: CalendarEvent): string {
+  const date = new Date(event.start_time);
+  const dateLabel = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+  if (event.all_day) return dateLabel;
+  const time = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+  return `${dateLabel} at ${time}`;
+}
+
+export async function sendCalendarEventNotification(input: {
+  householdId: string;
+  actorId: string;
+  actorName: string;
+  event: CalendarEvent;
+}): Promise<number> {
+  const members = await listMembers(input.householdId);
+  const recipients = members.filter((member) => {
+    if (member.id === input.actorId) return false;
+    if (input.event.assigned_to) return member.id === input.event.assigned_to;
+    return true;
+  });
+
+  const title = input.event.assigned_to
+    ? 'Calendar event for you'
+    : 'New household event';
+  const body = `${input.actorName} added "${input.event.title}" for ${eventWhen(
+    input.event
+  )}.`;
+
+  let sent = 0;
+  for (const member of recipients) {
+    try {
+      await addNotification(member.id, {
+        type: 'calendar_event',
+        title,
+        body,
+        data: { url: '/calendar', event_id: input.event.id },
+      });
+      sent += await sendPushToUser(member.id, {
+        title,
+        body,
+        url: '/calendar',
+      });
+    } catch (error) {
+      console.error(`Could not send calendar notification to ${member.id}`, error);
+    }
+  }
+  return sent;
 }
 
 export async function sendBinReminders(): Promise<number> {

@@ -44,16 +44,23 @@ export const bulkRoomsSchema = z.object({
   rooms: z.array(roomCreateSchema).min(1),
 });
 
+export const assignmentModeSchema = z.enum(['anyone', 'fixed', 'rotate', 'balanced']);
+
 export const choreTemplateCreateSchema = z.object({
   room_id: z.string().min(1).nullable().optional(),
   name: z.string().trim().min(1).max(150),
   description: z.string().nullable().optional(),
+  task_type: z.enum(['recurring', 'one_off']).default('recurring'),
+  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   frequency: z
     .enum(['daily', 'every_n_days', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'])
     .default('weekly'),
   frequency_days: z.number().int().positive().nullable().optional(),
   estimated_minutes: z.number().int().positive().nullable().optional(),
   priority: z.enum(['low', 'medium', 'high']).default('medium'),
+  assignment_mode: assignmentModeSchema.optional(),
+  fixed_assignee_id: z.string().min(1).nullable().optional(),
+  rotation_member_ids: z.array(z.string().min(1)).nullable().optional(),
 });
 
 export const choreTemplateUpdateSchema = choreTemplateCreateSchema.partial().extend({
@@ -64,6 +71,9 @@ export const choreInstanceFilterSchema = z.object({
   status: z.enum(['pending', 'completed', 'skipped']).optional(),
   due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   due_before: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  assigned_to: z.string().min(1).optional(),
+  unassigned: z.enum(['true', 'false']).optional(),
+  task_type: z.enum(['recurring', 'one_off']).optional(),
 });
 
 export const assignChoreSchema = z.object({

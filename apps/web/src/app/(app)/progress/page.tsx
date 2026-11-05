@@ -48,6 +48,9 @@ export default function ProgressPage() {
     );
   }
 
+  const balance = summary.balance ?? [];
+  const unassigned = summary.unassigned ?? { open_chores: 0, open_minutes: 0 };
+
   return (
     <div className="space-y-6">
       <div>
@@ -149,6 +152,56 @@ export default function ProgressPage() {
               </tbody>
             </table>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-baseline justify-between gap-3">
+            <CardTitle className="text-base">Workload balance</CardTitle>
+            <span className="text-xs text-secondary">Estimated minutes</span>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-secondary border-b border-border">
+                  <th className="py-2 pr-3 font-semibold">Member</th>
+                  <th className="py-2 pr-3 font-semibold text-right">Done last 7 days</th>
+                  <th className="py-2 pr-3 font-semibold text-right">Open</th>
+                  <th className="py-2 font-semibold text-right">Overdue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {balance.map((member) => (
+                  <tr key={member.user_id} className="border-b border-border last:border-b-0">
+                    <td className="py-3 pr-3">{member.name}</td>
+                    <td className="py-3 pr-3 text-right tabular-nums">
+                      {member.done_minutes} min
+                    </td>
+                    <td className="py-3 pr-3 text-right tabular-nums">
+                      {member.open_minutes} min
+                      <span className="text-xs text-secondary">
+                        {' '}
+                        ({member.open_chores})
+                      </span>
+                    </td>
+                    <td className="py-3 text-right tabular-nums">
+                      {member.overdue_chores}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {unassigned.open_chores > 0 && (
+            <p className="text-xs text-secondary">
+              {unassigned.open_chores}{' '}
+              {unassigned.open_chores === 1 ? 'chore is' : 'chores are'} up for
+              grabs, about {unassigned.open_minutes} minutes.
+            </p>
+          )}
         </CardContent>
       </Card>
 

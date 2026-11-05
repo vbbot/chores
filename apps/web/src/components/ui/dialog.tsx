@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 
 interface DialogProps {
   open: boolean;
@@ -16,7 +17,12 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
   const titleId = React.useId();
   const panelRef = React.useRef<HTMLDivElement>(null);
   const onCloseRef = React.useRef(onClose);
+  const [mounted, setMounted] = React.useState(false);
   onCloseRef.current = onClose;
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   React.useEffect(() => {
     if (!open) return;
@@ -67,11 +73,11 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
     };
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 bg-black/60"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -99,6 +105,7 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
         </div>
         <div>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
