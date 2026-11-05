@@ -1,5 +1,21 @@
 {
-  "dependencies": {
-    "firebase": "^13.2.0"
+  "name": "chores",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @chores/web",
+    "build": "npm run build -w @chores/web",
+    "start": "npm run start -w @chores/web",
+    "lint": "npm run lint -w @chores/web",
+    "test": "vitest run",
+    "e2e": "npm run test:e2e -w @chores/web"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.4"
   }
 }

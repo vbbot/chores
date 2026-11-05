@@ -1,4 +1,7 @@
-.PHONY: up down logs verify test e2e
+.PHONY: up down logs install dev build test e2e verify
+
+install:
+	npm install
 
 up:
 	docker compose up -d --build
@@ -9,13 +12,16 @@ down:
 logs:
 	docker compose logs -f --tail=100
 
+dev:
+	npm run dev
+
+build:
+	npm run build
+
 test:
-	docker compose up -d
-	docker compose exec -T backend pytest -q
+	npm test
 
 e2e:
 	./scripts/run-e2e-loop.sh
 
-verify:
-	./scripts/run-e2e-loop.sh
-	docker compose exec -T backend pytest -q
+verify: e2e test

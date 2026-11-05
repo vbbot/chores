@@ -1,4 +1,4 @@
-# ChoreSync Design Direction
+# Chores Design Direction
 
 ## Design Read
 

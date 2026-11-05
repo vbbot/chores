@@ -2,8 +2,13 @@
 .env
 .env.local
 .env.*.local
+firebase-admin*.json
+secrets/
 
-# Python
+# Firebase CLI
+.firebase/
+
+# Python legacy
 __pycache__/
 *.py[cod]
 .venv/
@@ -16,9 +21,10 @@ node_modules/
 next-env.d.ts
 
 # Test output
-frontend/artifacts/
-frontend/test-results/
-frontend/screenshots/
+apps/web/artifacts/
+apps/web/test-results/
+apps/web/screenshots/
 
 # OS
 .DS_Store
+firebase-debug.log

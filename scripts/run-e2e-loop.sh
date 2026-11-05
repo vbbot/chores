@@ -5,9 +5,16 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 BASE_URL="${BASE_URL:-http://localhost}"
-API_HEALTH_URL="${API_HEALTH_URL:-http://localhost:8000/health}"
+ALTCHA_URL="${ALTCHA_URL:-$BASE_URL/api/altcha/challenge}"
 
-echo "== ChoreSync verification loop =="
+if [ -f "$ROOT/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ROOT/.env"
+  set +a
+fi
+
+echo "== Chores verification loop =="
 
 if ! docker info >/dev/null 2>&1; then
   echo "Docker daemon is not running. Start Docker Desktop, then re-run." >&2
@@ -17,37 +24,37 @@ fi
 echo "[1/4] Starting stack"
 docker compose up -d --build
 
-echo "[2/4] Waiting for backend and frontend"
-for _ in $(seq 1 90); do
-  if curl -fsS "$API_HEALTH_URL" >/dev/null 2>&1 && curl -fsS "$BASE_URL" >/dev/null 2>&1; then
+echo "[2/4] Waiting for the app and ALTCHA challenge endpoint"
+for _ in $(seq 1 120); do
+  if curl -fsS "$BASE_URL" >/dev/null 2>&1 && curl -fsS "$ALTCHA_URL" >/dev/null 2>&1; then
     break
   fi
   sleep 2
 done
 
-if ! curl -fsS "$API_HEALTH_URL" >/dev/null 2>&1; then
-  echo "Backend health check failed at $API_HEALTH_URL" >&2
-  docker compose logs --tail=60 backend >&2
+if ! curl -fsS "$BASE_URL" >/dev/null 2>&1; then
+  echo "App did not answer at $BASE_URL" >&2
+  docker compose logs --tail=80 frontend nginx >&2
   exit 1
 fi
 
-if ! curl -fsS "$BASE_URL" >/dev/null 2>&1; then
-  echo "Frontend did not answer at $BASE_URL" >&2
-  docker compose logs --tail=60 frontend nginx >&2
+if ! curl -fsS "$ALTCHA_URL" >/dev/null 2>&1; then
+  echo "ALTCHA challenge did not answer at $ALTCHA_URL" >&2
+  docker compose logs --tail=80 frontend >&2
   exit 1
 fi
 
 echo "[3/4] Preparing Playwright"
-cd "$ROOT/frontend"
-if [ ! -d node_modules/@playwright/test ]; then
+cd "$ROOT/apps/web"
+if [ ! -d "$ROOT/node_modules/@playwright/test" ]; then
   npm install --no-audit --no-fund
 fi
 npx playwright install chromium
 
 echo "[4/4] Running browser journey"
 rm -rf artifacts/screenshots
-npx playwright test "$@"
+FIREBASE_SERVICE_ACCOUNT_PATH="$HOME/.config/firebase-admin.json" BASE_URL="$BASE_URL" npx playwright test "$@"
 
 echo
-echo "Screenshots: frontend/artifacts/screenshots/<project>/"
-echo "Report:      frontend/artifacts/html-report/index.html"
+echo "Screenshots: apps/web/artifacts/screenshots/<project>/"
+echo "Report:      apps/web/artifacts/html-report/index.html"

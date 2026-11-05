@@ -1,0 +1,15 @@
+node_modules
+apps/web/node_modules
+apps/web/.next
+apps/web/artifacts
+apps/web/test-results
+apps/web/screenshots
+.git
+.firebase
+.env
+.env.*
+firebase-admin*.json
+secrets
+antigravity-export
+npm-debug.log*
+firebase-debug.log

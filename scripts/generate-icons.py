@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the ChoreSync app icons.
+"""Generate the Chores app icons.
 
 The mark is a checklist: three boxes with tick marks on a white field inside a
 heavy black frame. It matches the 2px print-border identity without depending
@@ -10,7 +10,7 @@ import struct
 import zlib
 from pathlib import Path
 
-OUT_DIR = Path(__file__).resolve().parent.parent / "frontend" / "public" / "icons"
+OUT_DIR = Path(__file__).resolve().parent.parent / "apps" / "web" / "public" / "icons"
 
 
 def chunk(tag: bytes, data: bytes) -> bytes:

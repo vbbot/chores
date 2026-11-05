@@ -1,73 +1,101 @@
-# ChoreSync
+# Chores
 
-A self-hosted household management Progressive Web App for chores, bin
-collections, shopping, bills, calendar events, and shared notes.
-
-## Quick Start
-
-1. Copy the environment file and configure it:
-
-   ```sh
-   cp .env.example .env
-   ```
-
-2. Generate VAPID keys for push notifications:
-
-   ```sh
-   npx web-push generate-vapid-keys
-   ```
-
-   Put the keys in `.env` as `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. Leave
-   `API_URL` empty when the app is served through nginx on one origin.
-
-3. Start the stack:
-
-   ```sh
-   docker compose up -d --build
-   ```
-
-4. Open http://localhost.
-
-The database schema is created on backend startup. Push notifications and
-service worker install require HTTPS in production, or `localhost` in
-development.
-
-## Verification Loop
-
-The agentic loop starts the stack, runs the backend tests, drives a real
-Chromium browser through the full household journey, captures screenshots for
-every route, and fails on console errors or failed API calls.
-
-```sh
-make verify
-```
-
-Outputs:
-
-- `frontend/artifacts/screenshots/<project>/` for visual review
-- `frontend/artifacts/report.json` for machine-readable results
-- `frontend/artifacts/html-report/` for the Playwright report
-
-Run only the browser journey with `make e2e`. Run only backend tests with
-`make test`.
-
-## Development
-
-```sh
-# Database, Redis, and backend
-docker compose up db redis backend -d
-
-# Frontend (set NEXT_PUBLIC_API_URL=http://localhost:8000 in .env.local)
-cd frontend && npm install && npm run dev
-
-# Backend tests
-docker compose exec backend pytest -q
-```
+A UK household management PWA for chores, bin collections, shopping, bills,
+calendar events, and shared notes.
 
 ## Stack
 
-- **Frontend**: Next.js 14, TypeScript, Tailwind CSS, PWA
-- **Backend**: FastAPI, SQLAlchemy 2.0, Celery
-- **Database**: PostgreSQL 16
-- **Cache/Broker**: Redis 7
-- **Proxy**: Nginx
+- Next.js 14 PWA
+- Firebase Auth
+- Firestore
+- Firebase Cloud Messaging
+- ALTCHA proof-of-work on login and registration
+- Docker Compose and nginx
+
+There is no separate API server, database container, Redis, or Celery worker.
+Next.js route handlers use the Firebase Admin SDK.
+
+## Repository layout
+
+```
+apps/web                 Next.js app, API routes, Playwright tests
+packages/domain          Shared types, validation, and household logic
+packages/api-client      Typed client with cookie and bearer auth adapters
+packages/server          Firebase Admin, repositories, auth, iCal, jobs
+packages/config          Shared TypeScript configuration
+```
+
+The workspace is structured so an Expo app can be added under `apps/mobile`
+later. Only the PWA is built today.
+
+## Firebase setup
+
+1. Create a Firebase project.
+2. Enable Email/Password authentication.
+3. Create a Firestore database in Native mode.
+4. Register a web app.
+5. Generate an Admin SDK service account.
+6. Generate an FCM Web Push certificate.
+7. Copy `.env.example` to `.env` and fill in the values.
+
+Store the service account outside the repo. The default local path is:
+
+```
+~/.config/firebase-admin.json
+```
+
+Docker Compose mounts that file read-only at
+`/run/secrets/firebase-admin.json`. Set `SESSION_COOKIE_SECURE=true` when the
+app is served over HTTPS.
+
+Deploy Firestore rules and indexes:
+
+```sh
+firebase deploy --only firestore:rules,firestore:indexes
+```
+
+## Run with Docker
+
+```sh
+docker compose up -d --build
+```
+
+Open http://localhost.
+
+The stack contains `frontend`, `cron`, and `nginx`. The `cron` container calls
+protected internal routes at 00:05 and 19:00 Europe/London.
+
+## Local development
+
+```sh
+npm install
+set -a
+source .env
+set +a
+FIREBASE_SERVICE_ACCOUNT_PATH="$HOME/.config/firebase-admin.json" npm run dev
+```
+
+## Verification
+
+```sh
+npm test          # shared domain tests
+make e2e          # builds the stack and runs Playwright
+make verify       # E2E plus domain tests
+```
+
+Playwright captures screenshots under `apps/web/artifacts/screenshots/`.
+
+## Authentication
+
+Login and registration are server-brokered:
+
+1. The browser solves an ALTCHA challenge.
+2. The server verifies the payload.
+3. The server verifies credentials with Firebase.
+4. The server sets an HTTP-only Firebase session cookie.
+
+The API also accepts `Authorization: Bearer <Firebase ID token>` so future
+mobile clients can reuse the same versioned `/api/v1` endpoints.
+
+Firestore denies direct browser access. All reads and writes go through the
+server.
