@@ -75,6 +75,25 @@ set +a
 FIREBASE_SERVICE_ACCOUNT_PATH="$HOME/.config/firebase-admin.json" npm run dev
 ```
 
+## Deployment
+
+The production deployment is Docker Compose behind a Cloudflare Tunnel.
+
+1. Bind nginx to localhost only. This is already set in `docker-compose.yml`.
+2. Set `SESSION_COOKIE_SECURE=true` in `.env` for HTTPS deployments.
+3. Add the public hostname to Firebase Authentication authorised domains.
+4. Run:
+
+   ```sh
+   docker compose up -d --build
+   ```
+
+5. Install and authenticate `cloudflared`, create a tunnel, and route the
+   hostname. A sample ingress file is in `cloudflare/config.example.yml`.
+
+Cloudflare should bypass cache for `/api/*`, `/firebase-messaging-sw.js`, and
+`/manifest.json`. Do not expose ports `80` or `3000` directly to the internet.
+
 ## Verification
 
 ```sh

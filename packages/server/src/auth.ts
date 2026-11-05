@@ -18,8 +18,13 @@ function parseCookies(header: string | null): Record<string, string> {
   );
 }
 
-export function sessionCookie(token: string): string {
-  const secure = process.env.SESSION_COOKIE_SECURE === 'true';
+export function requestIsSecure(request: Request): boolean {
+  if (process.env.SESSION_COOKIE_SECURE === 'true') return true;
+  const proto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
+  return proto === 'https';
+}
+
+export function sessionCookie(token: string, secure = false): string {
   return [
     `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
     'Path=/',

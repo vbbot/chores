@@ -29,8 +29,6 @@ services:
       NEXT_PUBLIC_FIREBASE_VAPID_KEY: ${NEXT_PUBLIC_FIREBASE_VAPID_KEY:-}
     volumes:
       - ${HOME}/.config/firebase-admin.json:/run/secrets/firebase-admin.json:ro
-    ports:
-      - "3000:3000"
     healthcheck:
       test:
         - CMD
@@ -57,7 +55,7 @@ services:
     image: nginx:alpine
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "127.0.0.1:80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     healthcheck:

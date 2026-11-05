@@ -10,6 +10,10 @@ export const metadata: Metadata = {
   title: 'Chores - Household Management',
   description: 'Shared household chores, bins, and tasks for couples and housemates',
   manifest: '/manifest.json',
+  robots: {
+    index: false,
+    follow: false,
+  },
   icons: {
     icon: '/icons/icon-192.png',
     apple: '/icons/icon-192.png',

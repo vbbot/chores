@@ -3,6 +3,7 @@ import {
   createSessionCookie,
   registerAccount,
   rateLimit,
+  requestIsSecure,
   requireSameOrigin,
   route,
   sessionCookie,
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
 
     return Response.json(
       { access_token: '', token_type: 'cookie', user },
-      { headers: { 'Set-Cookie': sessionCookie(cookie) } }
+      { headers: { 'Set-Cookie': sessionCookie(cookie, requestIsSecure(request)) } }
     );
   });
 }
