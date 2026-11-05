@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth';
 import { PwaRegister } from '@/components/pwa-register';
+import { QueryProvider } from '@/components/query-provider';
+import { ThemeProvider } from '@/components/theme-provider';
+import '@fontsource-variable/source-sans-3/wght.css';
 import './globals.css';
-
-const inter = Inter({ subsets: ['latin'], display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'Chores - Household Management',
@@ -38,9 +38,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en-GB" className={inter.className}>
+    <html lang="en-GB" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var m=localStorage.getItem('chores-theme')||'auto';var d=m==='dark'||(m==='auto'&&window.matchMedia('(prefers-color-scheme: dark)').matches);var t=d?'dark':'light';document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <ThemeProvider>
+          <QueryProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </QueryProvider>
+        </ThemeProvider>
         <PwaRegister />
       </body>
     </html>

@@ -82,7 +82,7 @@ export function Dialog({ open, onClose, title, children }: DialogProps) {
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-card border-2 border-foreground bg-background p-6"
+        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-sheet border-2 border-foreground bg-background p-6 dialog-enter"
       >
         <div className="flex items-center justify-between mb-4 border-b border-border pb-2">
           <h2 id={titleId} className="text-lg font-semibold">

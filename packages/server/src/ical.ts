@@ -1,5 +1,5 @@
 import type { Bill, ChoreInstance } from '@chores/domain';
-import { addDays } from '@chores/domain';
+import { addDays, londonToday } from '@chores/domain';
 
 import { upcomingBinDates } from './bins';
 import { listBills } from './bills';
@@ -64,15 +64,26 @@ export async function choresIcal(householdId: string): Promise<string> {
 
 export async function binsIcal(householdId: string): Promise<string> {
   const schedules = await upcomingBinDates(householdId);
+  const today = londonToday();
   const events = schedules.flatMap(({ schedule, dates }) =>
-    dates.map((date) =>
+    dates.flatMap((date) => [
+      ...(date > today
+        ? [
+            dateEvent({
+              uid: `bin-prep-${schedule.id}-${date}`,
+              start: addDays(date, -1),
+              summary: `Put out bins: ${schedule.name} (${schedule.colour})`,
+              description: `Collection tomorrow morning. Put the ${schedule.colour} bin out tonight.`,
+            }),
+          ]
+        : []),
       dateEvent({
         uid: `bin-${schedule.id}-${date}`,
         start: date,
         summary: `Bin Collection: ${schedule.name} (${schedule.colour})`,
         description: `Put out the ${schedule.colour} bin`,
-      })
-    )
+      }),
+    ])
   );
   return wrapCalendar('Bins', events);
 }

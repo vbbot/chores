@@ -4,24 +4,28 @@
 
 :root {
   --background: #FFFFFF;
-  --foreground: #0A0A0A;
-  --surface: #FAFAFA;
-  --border: #E5E5E5;
-  --secondary: #737373;
-  --destructive: #DC2626;
-  --success: #16A34A;
+  --foreground: #080808;
+  --surface: #F6F6F4;
+  --border: #D8D8D4;
+  --secondary: #656560;
+  --destructive: #C81E1E;
+  --success: #15803D;
+  --accent: #C2410C;
+  --accent-foreground: #FFFFFF;
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0A0A0A;
-    --foreground: #FAFAFA;
-    --surface: #141414;
-    --border: #262626;
-    --secondary: #737373;
-    --destructive: #EF4444;
-    --success: #22C55E;
-  }
+:root[data-theme='dark'] {
+  --background: #050505;
+  --foreground: #FAFAF8;
+  --surface: #111111;
+  --border: #2A2A28;
+  --secondary: #A8A8A2;
+  --destructive: #F87171;
+  --success: #4ADE80;
+  --accent: #FF5A1F;
+  --accent-foreground: #080808;
+  color-scheme: dark;
 }
 
 body {
@@ -29,14 +33,143 @@ body {
   background: var(--background);
   margin: 0;
   padding: 0;
+  font-family: 'Source Sans 3 Variable', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 
 a, button, summary, select, input[type="checkbox"], input[type="radio"], label[for] {
   cursor: pointer;
 }
 
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
-  outline: 2px solid var(--foreground);
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+html.theme-changing *,
+html.theme-changing *::before,
+html.theme-changing *::after {
+  transition:
+    background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    fill 160ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+}
+
+.page-enter {
+  animation: page-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.sheet-enter {
+  animation: sheet-enter 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.dialog-enter {
+  animation: dialog-enter 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.step-enter {
+  animation: step-enter 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dialog-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes step-enter {
+  from {
+    opacity: 0;
+    transform: translateX(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+altcha-widget {
+  display: block;
+  width: 100%;
+  --altcha-max-width: 100%;
+  --altcha-border-width: 1px;
+  --altcha-border-color: var(--border);
+  --altcha-border-radius: 4px;
+  --altcha-color-base: var(--surface);
+  --altcha-color-base-content: var(--foreground);
+  --altcha-color-success: var(--accent);
+  --altcha-color-success-content: var(--accent-foreground);
+  --altcha-padding: 0.75rem;
+  --altcha-checkbox-size: 1.5rem;
+  --altcha-checkbox-border-width: 1px;
+  --altcha-checkbox-border-color: var(--foreground);
+  --altcha-checkbox-border-radius: 3px;
+  --altcha-input-background-color: var(--background);
+  --altcha-input-border-width: 1px;
+  --altcha-input-border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-changing *,
+  html.theme-changing *::before,
+  html.theme-changing *::after {
+    transition: none !important;
+  }
+
+  .page-enter,
+  .sheet-enter,
+  .dialog-enter,
+  .step-enter {
+    animation: none !important;
+  }
+
+  * {
+    scroll-behavior: auto !important;
+  }
 }

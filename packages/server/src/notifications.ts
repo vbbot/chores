@@ -51,7 +51,8 @@ export async function sendBinReminders(): Promise<number> {
   for (const household of households.docs) {
     const householdId = household.id;
     const tonight = await binsTonight(householdId);
-    if (tonight.length === 0) continue;
+    const pending = tonight.filter((schedule) => !schedule.put_out_at);
+    if (pending.length === 0) continue;
 
     const members = await listMembers(householdId);
     const tokens: { token: string; userId: string }[] = [];
@@ -62,8 +63,8 @@ export async function sendBinReminders(): Promise<number> {
     if (tokens.length === 0) continue;
 
     const title =
-      tonight.length === 1 ? 'Bin collection tomorrow' : 'Bin collections tomorrow';
-    const body = tonight.map((schedule) => `${schedule.name} (${schedule.colour})`).join(', ');
+      pending.length === 1 ? 'Bin collection tomorrow' : 'Bin collections tomorrow';
+    const body = pending.map((schedule) => `${schedule.name} (${schedule.colour})`).join(', ');
 
     for (let index = 0; index < tokens.length; index += 400) {
       const chunk = tokens.slice(index, index + 400);

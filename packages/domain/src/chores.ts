@@ -1,4 +1,5 @@
 import { addDays } from './dates';
+import { addMonths } from './bills';
 import type { User } from './types';
 
 export function calculateNextDueDate(
@@ -8,7 +9,7 @@ export function calculateNextDueDate(
 ): string {
   switch (frequency) {
     case 'daily':
-      return fromDate;
+      return addDays(fromDate, 1);
     case 'every_n_days':
       return addDays(fromDate, frequencyDays ?? 3);
     case 'weekly':
@@ -16,11 +17,11 @@ export function calculateNextDueDate(
     case 'biweekly':
       return addDays(fromDate, 14);
     case 'monthly':
-      return addDays(fromDate, 30);
+      return addMonths(fromDate, 1);
     case 'quarterly':
-      return addDays(fromDate, 90);
+      return addMonths(fromDate, 3);
     case 'yearly':
-      return addDays(fromDate, 365);
+      return addMonths(fromDate, 12);
     default:
       return addDays(fromDate, 7);
   }

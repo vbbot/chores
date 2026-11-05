@@ -47,16 +47,32 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   // 06. Dashboard with tonight's bins widget.
   await page.waitForURL('**/dashboard');
   await expect(page.getByRole('heading', { name: 'Today at home' })).toBeVisible();
-  await expect(page.getByText('Put out the bins tonight')).toBeVisible();
+  await expect(page.getByText('Put the bins out tonight')).toBeVisible();
   await shot(page, project, '06-dashboard');
+
+  await page.getByRole('button', { name: 'Mark bins out' }).click();
+  await expect(page.getByRole('status')).toContainText('Bins out');
 
   // 07-09. Chores: empty state, create dialog, populated list.
   await goTo(page, 'Chores');
   await expect(page.getByRole('heading', { name: 'Chores' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Suggested for your home' })).toBeVisible();
   await shot(page, project, '07-chores-empty');
+  const suggestionSection = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'Suggested for your home' }) });
+  const firstSuggestion = suggestionSection.locator('div.rounded-card.border').first();
+  const firstSuggestionName = (
+    await firstSuggestion.getByRole('heading').textContent()
+  )?.trim();
+  expect(firstSuggestionName).toBeTruthy();
+  await firstSuggestion.getByRole('button', { name: 'Not now' }).click();
+  await expect(
+    page.getByRole('heading', { name: firstSuggestionName! })
+  ).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Add chore' }).click();
-  await expect(page.getByRole('heading', { name: 'Add chore template' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add chore' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Add recurring chore' })).toBeVisible();
   await expect(page.locator('#chore_name')).toBeFocused();
   await page.fill('#chore_name', 'Mop kitchen floor');
   await page.selectOption('#chore_freq', 'weekly');
@@ -73,7 +89,29 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await expect(choreInstance.getByRole('button', { name: 'Mark done' })).toBeEnabled();
   await shot(page, project, '09-chores-populated');
   await choreInstance.getByRole('button', { name: 'Mark done' }).click();
+  await expect(page.getByRole('status')).toContainText('XP');
   await expect(page.getByLabel('Assigned to')).toHaveCount(2);
+
+  const todayLondon = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  const templatesResponse = await page.request.get('/api/v1/chores/templates');
+  expect(templatesResponse.status()).toBe(200);
+  const templates = (await templatesResponse.json()) as { name: string; next_due_date?: string }[];
+  const mop = templates.find((template) => template.name === 'Mop kitchen floor');
+  expect(mop?.next_due_date && mop.next_due_date > todayLondon).toBeTruthy();
+
+  const mopSchedule = page
+    .locator('div.border.rounded-card')
+    .filter({ has: page.getByRole('heading', { name: 'Mop kitchen floor', exact: true }) });
+  await mopSchedule.getByRole('button', { name: 'Edit' }).click();
+  await expect(page.getByRole('heading', { name: 'Edit recurring chore' })).toBeVisible();
+  await page.selectOption('#chore_freq', 'monthly');
+  await page.getByRole('button', { name: 'Save chore' }).click();
+  await expect(mopSchedule.getByText('Monthly')).toBeVisible();
 
   // 10. Bins.
   await goTo(page, 'Bins');
@@ -104,6 +142,7 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   // 13-15. Bills.
   await goTo(page, 'Bills');
   await expect(page.getByRole('heading', { name: 'Household bills' })).toBeVisible();
+  await expect(page.getByText('Loading household bills...')).toHaveCount(0);
   await shot(page, project, '13-bills-empty');
   await page.getByRole('button', { name: 'Add bill' }).click();
   await expect(page.getByRole('heading', { name: 'Add household bill' })).toBeVisible();
@@ -140,19 +179,16 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await expect(page.getByRole('heading', { name: 'Wi-Fi password' })).toBeVisible();
   await shot(page, project, '19-notes');
 
-  // 20-21. Settings via More sheet on mobile.
+  // 20-21. Settings via the header cog.
   if (project === 'mobile') {
     await page.getByRole('button', { name: 'More', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'More sections' })).toBeVisible();
     await shot(page, project, '20-more-sheet');
-    await page
-      .getByRole('dialog', { name: 'More sections' })
-      .getByRole('link', { name: 'Settings', exact: true })
-      .click();
-    await page.waitForLoadState('networkidle');
-  } else {
-    await goTo(page, 'Settings');
+    await page.keyboard.press('Escape');
   }
+
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.waitForLoadState('networkidle');
 
   await expect(page.getByRole('heading', { name: 'Household settings' })).toBeVisible();
   await expect(page.getByText('Calendar feeds (iCal)')).toBeVisible();
@@ -163,7 +199,15 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   const feedResponse = await page.request.get(feedUrl!);
   expect(feedResponse.status()).toBe(200);
   expect(await feedResponse.text()).toContain('BEGIN:VCALENDAR');
+
+  const binsFeed = page.getByText(/\/api\/ical\/feed\/.+\/bins\.ics/);
+  const binsFeedUrl = (await binsFeed.textContent())?.trim();
+  expect(binsFeedUrl).toBeTruthy();
+  const binsFeedResponse = await page.request.get(binsFeedUrl!);
+  expect(binsFeedResponse.status()).toBe(200);
+  expect(await binsFeedResponse.text()).toContain('Put out bins');
   await expect(page.getByText('Members (1)')).toBeVisible();
+  await expect(page.getByText('Appearance')).toBeVisible();
 
   const addRoomButton = page.getByRole('button', { name: 'Add room' }).first();
   await addRoomButton.click();
@@ -184,8 +228,19 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL('**/dashboard');
   await expect(page.getByRole('heading', { name: 'Today at home' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'View progress' })).toBeVisible();
 
-  // 23. Bearer-token auth for future native clients.
+  await page.getByRole('button', { name: 'Switch to dark theme' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await shot(page, project, '22-dashboard-dark');
+
+  await page.getByRole('link', { name: 'View progress' }).click();
+  await page.waitForURL('**/progress');
+  await expect(page.getByRole('heading', { name: 'Progress' })).toBeVisible();
+  await expect(page.getByText(/Your level/)).toBeVisible();
+  await shot(page, project, '23-progress');
+
+  // 24. Bearer-token auth for future native clients.
   const rejectedLogin = await page.request.post('/api/v1/auth/login', {
     data: { email, password: 'TestPassword123' },
   });

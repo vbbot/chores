@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
 
 import type { ChoreInstance, ChoreTemplate, User } from '@chores/domain';
-import { londonToday, pickFairAssignee } from '@chores/domain';
+import {
+  calculateNextDueDate,
+  completionXp,
+  londonToday,
+  pickFairAssignee,
+  templateStreak,
+} from '@chores/domain';
 
 import { dbAdmin } from './firebase';
 import { householdCollection, listRooms } from './households';
@@ -22,11 +28,37 @@ function asTemplate(id: string, data: Record<string, unknown>): ChoreTemplate {
   return { id, ...(data as unknown as Omit<ChoreTemplate, 'id'>) };
 }
 
+function instanceId(templateId: string, dueDate: string): string {
+  return `${templateId}_${dueDate}`;
+}
+
 export async function listChoreTemplates(householdId: string): Promise<ChoreTemplate[]> {
   const result = await householdCollection(householdId, 'choreTemplates').get();
   return result.docs
     .map((doc) => asTemplate(doc.id, doc.data()))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listChoreTemplatesWithStreaks(
+  householdId: string
+): Promise<ChoreTemplate[]> {
+  const [templates, instances] = await Promise.all([
+    listChoreTemplates(householdId),
+    householdCollection(householdId, 'choreInstances').get(),
+  ]);
+  const today = londonToday();
+
+  return templates.map((template) => {
+    const history = instances.docs
+      .filter((doc) => doc.data().template_id === template.id)
+      .map((doc) => doc.data() as ChoreInstance);
+    const streak = templateStreak(history, today);
+    return {
+      ...template,
+      streak_current: streak.current,
+      streak_best: streak.best,
+    };
+  });
 }
 
 async function pendingCounts(householdId: string): Promise<Record<string, number>> {
@@ -46,6 +78,37 @@ export async function fairAssignee(householdId: string): Promise<string | null> 
   return pickFairAssignee(members, await pendingCounts(householdId));
 }
 
+async function createFutureInstance(
+  householdId: string,
+  template: ChoreTemplate,
+  dueDate: string
+): Promise<boolean> {
+  const ref = householdCollection(householdId, 'choreInstances').doc(
+    instanceId(template.id, dueDate)
+  );
+  const existing = await ref.get();
+  if (existing.exists) return false;
+
+  try {
+    await ref.create({
+      template_id: template.id,
+      household_id: householdId,
+      assigned_to: await fairAssignee(householdId),
+      completed_by: null,
+      due_date: dueDate,
+      completed_at: null,
+      status: 'pending',
+      notes: null,
+      created_at: new Date().toISOString(),
+    });
+    return true;
+  } catch (error) {
+    // Concurrent completion already created the next instance.
+    if ((error as { code?: number }).code === 6) return false;
+    throw error;
+  }
+}
+
 export async function createChoreTemplate(
   householdId: string,
   input: ChoreTemplateInput
@@ -55,6 +118,7 @@ export async function createChoreTemplate(
     if (!room.exists) throw new ApiError('Room not found', 404);
   }
 
+  const today = londonToday();
   const id = randomUUID();
   const template = {
     household_id: householdId,
@@ -66,23 +130,99 @@ export async function createChoreTemplate(
     estimated_minutes: input.estimated_minutes ?? 15,
     priority: input.priority ?? 'medium',
     is_active: true,
+    next_due_date: today,
     created_at: new Date().toISOString(),
   };
   await householdCollection(householdId, 'choreTemplates').doc(id).set(template);
 
-  await householdCollection(householdId, 'choreInstances').doc(randomUUID()).set({
-    template_id: id,
-    household_id: householdId,
-    assigned_to: await fairAssignee(householdId),
-    completed_by: null,
-    due_date: londonToday(),
-    completed_at: null,
-    status: 'pending',
-    notes: null,
-    created_at: new Date().toISOString(),
-  });
+  await householdCollection(householdId, 'choreInstances')
+    .doc(instanceId(id, today))
+    .set({
+      template_id: id,
+      household_id: householdId,
+      assigned_to: await fairAssignee(householdId),
+      completed_by: null,
+      due_date: today,
+      completed_at: null,
+      status: 'pending',
+      notes: null,
+      created_at: new Date().toISOString(),
+    });
 
   return asTemplate(id, template);
+}
+
+export async function updateChoreTemplate(
+  householdId: string,
+  templateId: string,
+  input: Partial<ChoreTemplateInput> & { is_active?: boolean }
+): Promise<ChoreTemplate> {
+  const ref = householdCollection(householdId, 'choreTemplates').doc(templateId);
+  const doc = await ref.get();
+  if (!doc.exists) throw new ApiError('Chore template not found', 404);
+  const current = asTemplate(doc.id, doc.data() as Record<string, unknown>);
+
+  const patch: Record<string, unknown> = {};
+  if (input.name !== undefined) patch.name = input.name.trim();
+  if (input.room_id !== undefined) patch.room_id = input.room_id;
+  if (input.description !== undefined) patch.description = input.description;
+  if (input.frequency !== undefined) patch.frequency = input.frequency;
+  if (input.frequency_days !== undefined) patch.frequency_days = input.frequency_days;
+  if (input.estimated_minutes !== undefined) patch.estimated_minutes = input.estimated_minutes;
+  if (input.priority !== undefined) patch.priority = input.priority;
+  if (input.is_active !== undefined) patch.is_active = input.is_active;
+
+  const scheduleChanged =
+    (input.frequency !== undefined && input.frequency !== current.frequency) ||
+    (input.frequency_days !== undefined && input.frequency_days !== current.frequency_days);
+
+  if (scheduleChanged) {
+    patch.next_due_date = calculateNextDueDate(
+      input.frequency ?? current.frequency,
+      input.frequency_days ?? current.frequency_days,
+      londonToday()
+    );
+  }
+
+  await ref.update(patch);
+  const updated = asTemplate(templateId, (await ref.get()).data() as Record<string, unknown>);
+
+  if (scheduleChanged || input.is_active === true || input.is_active === false) {
+    const future = await householdCollection(householdId, 'choreInstances').get();
+    const pendingFuture = future.docs.filter((instance) => {
+      const data = instance.data();
+      return (
+        data.template_id === templateId &&
+        data.status === 'pending' &&
+        String(data.due_date) > londonToday()
+      );
+    });
+    await Promise.all(pendingFuture.map((instance) => instance.ref.delete()));
+
+    if (updated.is_active) {
+      const due = updated.next_due_date && updated.next_due_date >= londonToday()
+        ? updated.next_due_date
+        : londonToday();
+      await createFutureInstance(householdId, updated, due);
+    }
+  }
+
+  return updated;
+}
+
+export async function deleteChoreTemplate(
+  householdId: string,
+  templateId: string
+): Promise<void> {
+  const ref = householdCollection(householdId, 'choreTemplates').doc(templateId);
+  if (!(await ref.get()).exists) throw new ApiError('Chore template not found', 404);
+
+  const instances = await householdCollection(householdId, 'choreInstances').get();
+  const pending = instances.docs.filter(
+    (doc) => doc.data().template_id === templateId && doc.data().status === 'pending'
+  );
+  await Promise.all(pending.map((doc) => doc.ref.delete()));
+  await ref.delete();
 }
 
 export async function listChoreInstances(
@@ -117,46 +257,123 @@ export async function listChoreInstances(
     .sort((a, b) => a.due_date.localeCompare(b.due_date));
 }
 
-async function instanceRef(householdId: string, instanceId: string) {
-  const ref = householdCollection(householdId, 'choreInstances').doc(instanceId);
+async function instanceRef(householdId: string, instanceIdValue: string) {
+  const ref = householdCollection(householdId, 'choreInstances').doc(instanceIdValue);
   const doc = await ref.get();
   if (!doc.exists) throw new ApiError('Chore instance not found', 404);
   return ref;
 }
 
+export interface CompletionResult {
+  xp_awarded: number;
+  on_time: boolean;
+  streak_current: number;
+}
+
 export async function completeChore(
   householdId: string,
-  instanceId: string,
+  instanceIdValue: string,
   userId: string,
   notes?: string | null
-): Promise<void> {
-  const ref = await instanceRef(householdId, instanceId);
-  await ref.update({
-    status: 'completed',
-    completed_by: userId,
-    completed_at: new Date().toISOString(),
-    ...(notes ? { notes } : {}),
+): Promise<CompletionResult> {
+  const ref = await instanceRef(householdId, instanceIdValue);
+  const current = await ref.get();
+  if (current.data()?.status !== 'pending') {
+    throw new ApiError('This chore is already closed', 409);
+  }
+
+  const templateId = String(current.data()?.template_id);
+  const templateRef = householdCollection(householdId, 'choreTemplates').doc(templateId);
+  const templateDoc = await templateRef.get();
+  if (!templateDoc.exists) throw new ApiError('Chore template not found', 404);
+  const template = asTemplate(templateDoc.id, templateDoc.data() as Record<string, unknown>);
+
+  const today = londonToday();
+  const dueDate = String(current.data()?.due_date);
+  const onTime = today <= dueDate;
+  const xpAwarded = completionXp(template.estimated_minutes, onTime);
+  const completedAt = new Date().toISOString();
+  const nextDue = calculateNextDueDate(
+    template.frequency,
+    template.frequency_days,
+    today
+  );
+
+  const transaction = dbAdmin().runTransaction(async (tx) => {
+    const fresh = await tx.get(ref);
+    if (fresh.data()?.status !== 'pending') {
+      throw new ApiError('This chore is already closed', 409);
+    }
+    tx.update(ref, {
+      status: 'completed',
+      completed_by: userId,
+      completed_at: completedAt,
+      xp_awarded: xpAwarded,
+      on_time: onTime,
+      ...(notes ? { notes } : {}),
+    });
+    tx.update(templateRef, { next_due_date: nextDue });
   });
+  await transaction;
+  await createFutureInstance(householdId, template, nextDue);
+
+  const history = await householdCollection(householdId, 'choreInstances')
+    .where('template_id', '==', templateId)
+    .get();
+  const streak = templateStreak(
+    history.docs.map((doc) => doc.data() as ChoreInstance),
+    today
+  );
+
+  return {
+    xp_awarded: xpAwarded,
+    on_time: onTime,
+    streak_current: streak.current,
+  };
 }
 
 export async function skipChore(
   householdId: string,
-  instanceId: string,
+  instanceIdValue: string,
   notes?: string | null
 ): Promise<void> {
-  const ref = await instanceRef(householdId, instanceId);
-  await ref.update({
-    status: 'skipped',
-    ...(notes ? { notes } : {}),
+  const ref = await instanceRef(householdId, instanceIdValue);
+  const current = await ref.get();
+  if (current.data()?.status !== 'pending') {
+    throw new ApiError('This chore is already closed', 409);
+  }
+
+  const templateId = String(current.data()?.template_id);
+  const templateRef = householdCollection(householdId, 'choreTemplates').doc(templateId);
+  const templateDoc = await templateRef.get();
+  if (!templateDoc.exists) throw new ApiError('Chore template not found', 404);
+  const template = asTemplate(templateDoc.id, templateDoc.data() as Record<string, unknown>);
+  const nextDue = calculateNextDueDate(
+    template.frequency,
+    template.frequency_days,
+    londonToday()
+  );
+
+  await dbAdmin().runTransaction(async (tx) => {
+    const fresh = await tx.get(ref);
+    if (fresh.data()?.status !== 'pending') {
+      throw new ApiError('This chore is already closed', 409);
+    }
+    tx.update(ref, {
+      status: 'skipped',
+      ...(notes ? { notes } : {}),
+    });
+    tx.update(templateRef, { next_due_date: nextDue });
   });
+  await createFutureInstance(householdId, template, nextDue);
 }
 
 export async function assignChore(
   householdId: string,
-  instanceId: string,
+  instanceIdValue: string,
   assignedTo: string | null
 ): Promise<void> {
-  const ref = await instanceRef(householdId, instanceId);
+  const ref = await instanceRef(householdId, instanceIdValue);
   if (assignedTo) {
     const members = await listMembers(householdId);
     if (!members.some((member: User) => member.id === assignedTo)) {
@@ -179,25 +396,23 @@ export async function generateDailyChores(): Promise<number> {
       .get();
 
     for (const template of templates.filter((item) => item.is_active)) {
-      const hasUpcoming = pending.docs.some(
-        (doc) =>
-          doc.data().template_id === template.id &&
-          String(doc.data().due_date) >= today
+      const hasPending = pending.docs.some(
+        (doc) => doc.data().template_id === template.id
       );
-      if (hasUpcoming) continue;
+      if (hasPending) continue;
 
-      await householdCollection(householdId, 'choreInstances').doc(randomUUID()).set({
-        template_id: template.id,
-        household_id: householdId,
-        assigned_to: await fairAssignee(householdId),
-        completed_by: null,
-        due_date: today,
-        completed_at: null,
-        status: 'pending',
-        notes: null,
-        created_at: new Date().toISOString(),
-      });
-      created += 1;
+      const due = template.next_due_date && template.next_due_date >= today
+        ? template.next_due_date
+        : today;
+      const didCreate = await createFutureInstance(householdId, template, due);
+      if (didCreate) {
+        if (template.next_due_date !== due) {
+          await householdCollection(householdId, 'choreTemplates')
+            .doc(template.id)
+            .update({ next_due_date: due });
+        }
+        created += 1;
+      }
     }
   }
   return created;

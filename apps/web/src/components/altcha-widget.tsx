@@ -59,5 +59,6 @@ export function AltchaWidget({ onPayload, resetKey = 0 }: AltchaWidgetProps) {
     name: 'altcha',
     language: 'en',
     workers: 2,
+    className: 'mt-2',
   });
 }

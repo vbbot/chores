@@ -10,7 +10,7 @@ interface EmptyStateProps {
 
 export function EmptyState({ title, description, actionLabel, onAction }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center p-8 text-center border-2 border-dashed border-border rounded-card my-4">
+    <div className="flex flex-col items-center justify-center p-8 text-center border border-dashed border-border rounded-card my-4">
       <h3 className="text-base font-semibold text-foreground">{title}</h3>
       <p className="mt-1 text-sm text-secondary max-w-sm">{description}</p>
       {actionLabel && onAction && (

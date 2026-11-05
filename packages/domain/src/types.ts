@@ -40,6 +40,9 @@ export interface ChoreTemplate {
   estimated_minutes: number | null;
   priority: 'low' | 'medium' | 'high';
   is_active: boolean;
+  next_due_date?: string | null;
+  streak_current?: number;
+  streak_best?: number;
   created_at: string;
 }
 
@@ -53,6 +56,8 @@ export interface ChoreInstance {
   completed_at: string | null;
   status: 'pending' | 'completed' | 'skipped';
   notes: string | null;
+  xp_awarded?: number;
+  on_time?: boolean;
   template_name?: string;
   room_name?: string;
 }
@@ -69,6 +74,18 @@ export interface BinSchedule {
   reminder_offset_hours: number;
   is_active: boolean;
   next_collection?: string;
+  put_out_at?: string | null;
+  put_out_by?: string | null;
+  put_out_by_name?: string | null;
+}
+
+export interface BinAction {
+  id: string;
+  schedule_id: string;
+  collection_date: string;
+  member_id: string;
+  created_at: string;
+  xp_awarded: number;
 }
 
 export interface BinException {

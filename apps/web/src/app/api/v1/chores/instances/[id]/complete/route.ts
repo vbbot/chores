@@ -18,7 +18,7 @@ export async function POST(
     requireSameOrigin(request);
     const { user, householdId } = await requireUserHousehold(request);
     const data = await parseBody(request, completeChoreSchema);
-    await completeChore(householdId, params.id, user.id, data.notes);
-    return Response.json({ id: params.id, status: 'completed' });
+    const result = await completeChore(householdId, params.id, user.id, data.notes);
+    return Response.json({ id: params.id, status: 'completed', ...result });
   });
 }

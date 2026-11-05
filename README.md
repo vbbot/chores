@@ -3,6 +3,10 @@
 A UK household management PWA for chores, bin collections, shopping, bills,
 calendar events, and shared notes.
 
+It includes personal and household XP, levels, on-time chore streaks, a progress
+page, previous-evening bin reminders, and rule-based chore suggestions based on
+your rooms, routine, and season.
+
 ## Stack
 
 - Next.js 14 PWA

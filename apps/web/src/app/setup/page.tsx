@@ -2,12 +2,13 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { apiFetch } from '@/lib/api';
 import { londonDateString } from '@/lib/dates';
-import { BinSchedule, ChoreTemplate, Household } from '@/lib/types';
+import { BinSchedule, ChoreTemplate, Household, Room } from '@/lib/types';
 
 const COMMON_ROOMS = [
   'Kitchen',
@@ -71,8 +72,9 @@ export default function SetupPage() {
         body: JSON.stringify({ house_type: houseType }),
       });
 
+      let roomsForChores = household.rooms;
       if (household.rooms.length === 0 && selectedRooms.length > 0) {
-        await apiFetch('/api/v1/households/rooms/bulk', {
+        roomsForChores = await apiFetch<Room[]>('/api/v1/households/rooms/bulk', {
           method: 'POST',
           body: JSON.stringify({
             rooms: selectedRooms.map((name) => ({ name, room_type: 'other' })),
@@ -99,15 +101,19 @@ export default function SetupPage() {
       }
 
       if (existingTemplates.length === 0) {
+        const kitchen = roomsForChores.find((room) => room.name === 'Kitchen');
+        const livingRoom = roomsForChores.find((room) => room.name === 'Living Room');
         const starterChores = [
           {
             name: 'Clean kitchen worktops and hob',
+            room_id: kitchen?.id ?? null,
             frequency: 'daily',
             estimated_minutes: 10,
             priority: 'medium',
           },
           {
             name: 'Vacuum living room and hallway',
+            room_id: livingRoom?.id ?? null,
             frequency: 'weekly',
             estimated_minutes: 20,
             priority: 'medium',
@@ -137,19 +143,33 @@ export default function SetupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <Card className="w-full max-w-lg">
+    <div className="relative min-h-screen flex items-center justify-center p-4 bg-background">
+      <div className="absolute top-3 right-3">
+        <ThemeToggle />
+      </div>
+      <Card className="w-full max-w-lg border-heavy border-foreground">
         <CardHeader>
-          <div className="text-xs font-semibold uppercase tracking-wider text-secondary mb-1">
-            Setup Step {step} of 3
+          <div className="flex gap-2 mb-3" aria-hidden="true">
+            {[1, 2, 3].map((index) => (
+              <span
+                key={index}
+                className={`h-1 flex-1 rounded-card ${
+                  index <= step ? 'bg-accent' : 'bg-border'
+                }`}
+              />
+            ))}
           </div>
-          <CardTitle className="text-xl">
+          <div className="text-xs font-semibold text-secondary">
+            Step {step} of 3
+          </div>
+          <CardTitle className="text-3xl font-semibold tracking-tight">
             {step === 1 && 'Configure your home layout'}
             {step === 2 && 'Set up bin collections'}
             {step === 3 && 'Invite your household partner'}
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <div key={step} className="step-enter">
           {error && (
             <div
               role="alert"
@@ -283,6 +303,7 @@ export default function SetupPage() {
               </div>
             </div>
           )}
+          </div>
         </CardContent>
       </Card>
     </div>
