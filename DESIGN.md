@@ -386,6 +386,8 @@ Suggestions:
 - Explains that bins go out the evening before.
 - Next collection date is prominent.
 - Schedule rows are quiet.
+- Each schedule has `Change next collection` and `Delete`.
+- Delete confirms first and removes that schedule's exceptions.
 - Scheduled changes use 1px rows.
 - Dashboard owns the tonight completion action.
 

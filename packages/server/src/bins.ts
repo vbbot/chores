@@ -9,6 +9,7 @@ import {
   nextCollection,
 } from '@chores/domain';
 
+import { dbAdmin } from './firebase';
 import { householdCollection } from './households';
 import { ApiError } from './http';
 import { listMembers } from './users';
@@ -90,6 +91,23 @@ export async function createBinSchedule(
     ...schedule,
     next_collection: nextCollection(schedule, londonToday()) ?? undefined,
   };
+}
+
+export async function deleteBinSchedule(
+  householdId: string,
+  scheduleId: string
+): Promise<void> {
+  const ref = householdCollection(householdId, 'binSchedules').doc(scheduleId);
+  if (!(await ref.get()).exists) throw new ApiError('Bin schedule not found', 404);
+
+  const exceptions = await householdCollection(householdId, 'binExceptions')
+    .where('schedule_id', '==', scheduleId)
+    .get();
+
+  const batch = dbAdmin().batch();
+  exceptions.docs.forEach((doc) => batch.delete(doc.ref));
+  batch.delete(ref);
+  await batch.commit();
 }
 
 export async function listBinExceptions(householdId: string): Promise<BinException[]> {

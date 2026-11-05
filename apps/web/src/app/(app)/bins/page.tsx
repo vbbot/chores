@@ -55,6 +55,25 @@ export default function BinsPage() {
     setDialogOpen(true);
   };
 
+  const deleteSchedule = async (schedule: BinSchedule) => {
+    if (
+      !window.confirm(
+        `Delete the ${schedule.name} collection? Its scheduled changes will be removed too.`
+      )
+    ) {
+      return;
+    }
+    setActionError(null);
+    try {
+      await apiFetch(`/api/v1/bins/schedules/${schedule.id}`, { method: 'DELETE' });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.bins.all });
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : 'Could not delete this bin collection.'
+      );
+    }
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -199,12 +218,19 @@ export default function BinsPage() {
                     </div>
                   )}
                 </div>
-                <div className="mt-3 pt-2 border-t border-border">
+                <div className="mt-3 pt-2 border-t border-border flex items-center justify-between gap-2">
                   <button
                     onClick={() => openExceptionDialog(s)}
                     className="text-xs underline text-secondary hover:text-foreground min-h-[44px] inline-flex items-center"
                   >
                     Change next collection
+                  </button>
+                  <button
+                    onClick={() => deleteSchedule(s)}
+                    aria-label={`Delete ${s.name} collection`}
+                    className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
+                  >
+                    Delete
                   </button>
                 </div>
               </CardContent>
