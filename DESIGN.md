@@ -513,7 +513,7 @@ Uses quiet sections with 1px dividers. No 2px card grid. Workload balance is inf
 
 - Search opens from the header.
 - Searches chores, notes, bills, calendar events, and shopping items.
-- Results link to their screen.
+- Results link to the matched item and highlight it on arrival.
 - Settings exports household data as a JSON file.
 
 ### Settings
