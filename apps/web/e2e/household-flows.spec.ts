@@ -286,6 +286,12 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await page.waitForLoadState('networkidle');
 
   await expect(page.getByRole('heading', { name: 'Household settings' })).toBeVisible();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await page.screenshot({
+    path: `artifacts/screenshots/${project}/21-settings-top.png`,
+    fullPage: false,
+    animations: 'disabled',
+  });
   await expect(page.getByText('Calendar feeds (iCal)')).toBeVisible();
   const choresFeed = page.getByText(/\/api\/ical\/feed\/.+\/chores\.ics/);
   await expect(choresFeed).toBeVisible();
@@ -303,6 +309,23 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   expect(await binsFeedResponse.text()).toContain('Put out bins');
   await expect(page.getByText('Members (1)')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
+
+  const settingsNav = page.getByRole('navigation', { name: 'Settings sections' });
+  await page.locator('#account').scrollIntoViewIfNeeded();
+  const settingsNavBox = await settingsNav.boundingBox();
+  expect(settingsNavBox?.y).toBeLessThan(100);
+  if (project !== 'mobile') {
+    const sidebarBox = await page.locator('aside').first().boundingBox();
+    expect(sidebarBox?.y).toBeLessThan(100);
+  }
+  await expect(settingsNav.locator('[aria-current="location"]')).toBeInViewport();
+  await page.screenshot({
+    path: `artifacts/screenshots/${project}/21-settings-scrolled.png`,
+    fullPage: false,
+    animations: 'disabled',
+  });
+  await settingsNav.getByRole('link', { name: 'Appearance' }).click();
+  await expect(page.locator('#appearance')).toBeInViewport();
 
   const addRoomButton = page.getByRole('button', { name: 'Add room' }).first();
   await addRoomButton.click();

@@ -35,6 +35,8 @@ interface SettingsSectionProps {
   title: string;
   description?: React.ReactNode;
   action?: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
   children: React.ReactNode;
 }
 
@@ -43,19 +45,19 @@ function SettingsSection({
   title,
   description,
   action,
+  open,
+  onToggle,
   children,
 }: SettingsSectionProps) {
-  const [open, setOpen] = React.useState(true);
-
   return (
-    <section id={id} className="scroll-mt-24 border-t border-border pt-6">
+    <section id={id} className="scroll-mt-32 border-t border-border pt-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-prose">
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
             <button
               type="button"
-              onClick={() => setOpen((value) => !value)}
+              onClick={onToggle}
               aria-expanded={open}
               aria-controls={`${id}-content`}
               aria-label={`${open ? 'Collapse' : 'Expand'} ${title}`}
@@ -496,6 +498,80 @@ export default function SettingsPage() {
   ];
 
   const isAdmin = user?.role === 'admin';
+  const [activeSection, setActiveSection] = React.useState<string>(
+    settingsSections[0].id
+  );
+  const [openSections, setOpenSections] = React.useState<Record<string, boolean>>(
+    () =>
+      Object.fromEntries(
+        settingsSections.map((section) => [section.id, true])
+      ) as Record<string, boolean>
+  );
+  const tabNavRef = React.useRef<HTMLDivElement>(null);
+  const tabRefs = React.useRef<Record<string, HTMLAnchorElement | null>>({});
+
+  const toggleSection = (id: string) => {
+    setOpenSections((previous) => ({ ...previous, [id]: !previous[id] }));
+  };
+
+  const jumpToSection = (id: string) => {
+    setOpenSections((previous) => ({ ...previous, [id]: true }));
+    setActiveSection(id);
+    window.setTimeout(() => {
+      const target = document.getElementById(id);
+      const reduceMotion = window.matchMedia(
+        '(prefers-reduced-motion: reduce)'
+      ).matches;
+      target?.scrollIntoView({
+        behavior: reduceMotion ? 'auto' : 'smooth',
+        block: 'start',
+      });
+      window.history.replaceState(null, '', `#${id}`);
+    }, 0);
+  };
+
+  React.useEffect(() => {
+    const updateActive = () => {
+      let current: string = settingsSections[0].id;
+      settingsSections.forEach((section) => {
+        const element = document.getElementById(section.id);
+        if (element && element.getBoundingClientRect().top <= 132) {
+          current = section.id;
+        }
+      });
+      setActiveSection((previous) => (previous === current ? previous : current));
+    };
+
+    updateActive();
+    window.addEventListener('scroll', updateActive, { passive: true });
+    return () => window.removeEventListener('scroll', updateActive);
+  }, []);
+
+  React.useEffect(() => {
+    const nav = tabNavRef.current;
+    const tab = tabRefs.current[activeSection];
+    if (!nav || !tab) return;
+    const navRect = nav.getBoundingClientRect();
+    const tabRect = tab.getBoundingClientRect();
+    const target =
+      nav.scrollLeft +
+      (tabRect.left - navRect.left) -
+      (nav.clientWidth - tab.clientWidth) / 2;
+    nav.scrollTo({ left: Math.max(0, target), behavior: 'auto' });
+  }, [activeSection]);
+
+  React.useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    window.setTimeout(() => {
+      if (hash && settingsSections.some((section) => section.id === hash)) {
+        setOpenSections((previous) => ({ ...previous, [hash]: true }));
+        setActiveSection(hash);
+        document.getElementById(hash)?.scrollIntoView({ block: 'start' });
+        return;
+      }
+      window.scrollTo(0, 0);
+    }, 0);
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -530,24 +606,46 @@ export default function SettingsPage() {
           : ''}
       </p>
 
-      <div className="lg:grid lg:grid-cols-[10rem_minmax(0,1fr)] lg:gap-10">
-        <nav aria-label="Settings sections" className="hidden self-start lg:block">
-          <div className="sticky top-6 space-y-0.5">
-            {settingsSections.map((section) => (
+      <nav
+        aria-label="Settings sections"
+        className="sticky top-[60px] z-30 -mx-4 border-b border-border bg-background md:-mx-6"
+      >
+        <div
+          ref={tabNavRef}
+          className="flex gap-1 overflow-x-auto px-4 md:px-6"
+        >
+          {settingsSections.map((section) => {
+            const active = activeSection === section.id;
+            return (
               <a
                 key={section.id}
+                ref={(element) => {
+                  tabRefs.current[section.id] = element;
+                }}
                 href={`#${section.id}`}
-                className="block min-h-[44px] px-3 py-2.5 text-sm leading-tight text-secondary transition-colors hover:bg-surface hover:text-foreground"
+                onClick={(event) => {
+                  event.preventDefault();
+                  jumpToSection(section.id);
+                }}
+                aria-current={active ? 'location' : undefined}
+                className={`inline-flex min-h-[52px] items-center whitespace-nowrap border-b-2 px-3 text-sm transition-colors ${
+                  active
+                    ? 'border-accent text-foreground font-semibold'
+                    : 'border-transparent text-secondary hover:text-foreground'
+                }`}
               >
                 {section.label}
               </a>
-            ))}
-          </div>
-        </nav>
+            );
+          })}
+        </div>
+      </nav>
 
-        <div className="min-w-0 space-y-8">
+      <div className="min-w-0 space-y-8">
           <SettingsSection
             id="appearance"
+            open={openSections.appearance}
+            onToggle={() => toggleSection('appearance')}
             title="Appearance"
             description="Auto follows your device theme."
           >
@@ -570,7 +668,12 @@ export default function SettingsPage() {
             </div>
           </SettingsSection>
 
-          <SettingsSection id="household" title="Household">
+          <SettingsSection
+            id="household"
+            title="Household"
+            open={openSections.household}
+            onToggle={() => toggleSection('household')}
+          >
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <span className="text-secondary">Name</span>
@@ -629,6 +732,8 @@ export default function SettingsPage() {
 
           <SettingsSection
             id="reminders"
+            open={openSections.reminders}
+            onToggle={() => toggleSection('reminders')}
             title="Reminders"
             description="Household defaults apply to everyone. Leave an override blank to use the default."
           >
@@ -961,6 +1066,8 @@ export default function SettingsPage() {
 
           <SettingsSection
             id="rooms"
+            open={openSections.rooms}
+            onToggle={() => toggleSection('rooms')}
             title={`Rooms (${rooms.length})`}
             action={
               <Button onClick={openAddRoom} variant="secondary">
@@ -1010,7 +1117,12 @@ export default function SettingsPage() {
             )}
           </SettingsSection>
 
-          <SettingsSection id="members" title={`Members (${members.length})`}>
+          <SettingsSection
+            id="members"
+            title={`Members (${members.length})`}
+            open={openSections.members}
+            onToggle={() => toggleSection('members')}
+          >
             <div className="space-y-2">
               {members.map((member) => (
                 <div
@@ -1060,6 +1172,8 @@ export default function SettingsPage() {
 
           <SettingsSection
             id="calendar-feeds"
+            open={openSections['calendar-feeds']}
+            onToggle={() => toggleSection('calendar-feeds')}
             title="Calendar feeds (iCal)"
             description="Subscribe from Google Calendar, Apple Calendar, or Outlook using these feed URLs."
           >
@@ -1087,6 +1201,8 @@ export default function SettingsPage() {
 
           <SettingsSection
             id="devices"
+            open={openSections.devices}
+            onToggle={() => toggleSection('devices')}
             title="Device notifications"
             description="Enable browser notifications for reminders on this device."
           >
@@ -1111,6 +1227,8 @@ export default function SettingsPage() {
 
           <SettingsSection
             id="account"
+            open={openSections.account}
+            onToggle={() => toggleSection('account')}
             title="Account"
             description="Your sign-in details for this household."
           >
@@ -1132,7 +1250,6 @@ export default function SettingsPage() {
               Sign out of Chores
             </Button>
           </SettingsSection>
-        </div>
       </div>
 
       <Dialog

@@ -143,7 +143,7 @@ export function Header() {
     : [];
 
   return (
-    <header className="border-b border-border bg-background px-4 min-h-[60px] flex items-center justify-between">
+    <header className="sticky top-0 z-40 border-b border-border bg-background px-4 min-h-[60px] flex items-center justify-between">
       <Link
         href="/dashboard"
         className="text-xl font-semibold tracking-tight min-h-[44px] inline-flex items-center"

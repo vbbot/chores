@@ -164,7 +164,7 @@ export function Nav() {
 
   return (
     <>
-      <aside className="hidden md:flex flex-col w-56 border-r border-border min-h-[calc(100vh-60px)] py-4 bg-background">
+      <aside className="hidden md:flex md:flex-col md:w-56 md:shrink-0 md:self-start md:sticky md:top-[60px] md:h-[calc(100vh-60px)] md:overflow-y-auto border-r border-border py-4 bg-background">
         {desktopNav.map((item) => (
           <Link
             key={item.href}

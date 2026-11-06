@@ -183,6 +183,7 @@ Implementation:
 - Icon buttons are 44px minimum with accessible names and titles.
 - Header height: 60px.
 - Header border: 1px.
+- Header is sticky on scroll.
 
 ### Desktop Navigation
 
@@ -558,7 +559,7 @@ Appearance:
 - Active option uses accent border and surface.
 - Auto follows the device theme.
 - Appearance comes first.
-- Desktop uses a sticky section rail. Mobile sections collapse.
+- Settings use a sticky horizontal tab strip, never a second sidebar. Mobile tabs scroll horizontally and open the selected section.
 - Reminder defaults and personal overrides share one table. One save action covers both.
 - Account shows the signed-in email and role before sign out.
 
