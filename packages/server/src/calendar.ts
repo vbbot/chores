@@ -33,7 +33,7 @@ export async function createCalendarEvent(
     end_time?: string | null;
     all_day?: boolean;
     assigned_to?: string | null;
-    recurrence_rule?: string | null;
+    reminder_minutes_before?: number | null;
     color?: string | null;
     category?: string | null;
   }
@@ -48,13 +48,48 @@ export async function createCalendarEvent(
     start_time: normalise(input.start_time)!,
     end_time: normalise(input.end_time),
     all_day: input.all_day ?? false,
-    recurrence_rule: input.recurrence_rule ?? null,
+    reminder_minutes_before: input.reminder_minutes_before ?? null,
     color: input.color ?? null,
     category: input.category ?? null,
     created_at: new Date().toISOString(),
   };
   await householdCollection(householdId, 'calendarEvents').doc(id).set(event);
   return { id, ...event };
+}
+
+export async function updateCalendarEvent(
+  householdId: string,
+  eventId: string,
+  input: Partial<{
+    title: string;
+    description: string | null;
+    start_time: string;
+    end_time: string | null;
+    all_day: boolean;
+    assigned_to: string | null;
+    reminder_minutes_before: number | null;
+    color: string | null;
+    category: string | null;
+  }>
+): Promise<CalendarEvent> {
+  const ref = householdCollection(householdId, 'calendarEvents').doc(eventId);
+  if (!(await ref.get()).exists) throw new ApiError('Event not found', 404);
+
+  const patch: Record<string, unknown> = {};
+  if (input.title !== undefined) patch.title = input.title.trim();
+  if (input.description !== undefined) patch.description = input.description;
+  if (input.start_time !== undefined) patch.start_time = normalise(input.start_time);
+  if (input.end_time !== undefined) patch.end_time = normalise(input.end_time);
+  if (input.all_day !== undefined) patch.all_day = input.all_day;
+  if (input.assigned_to !== undefined) patch.assigned_to = input.assigned_to;
+  if (input.reminder_minutes_before !== undefined) {
+    patch.reminder_minutes_before = input.reminder_minutes_before;
+  }
+  if (input.color !== undefined) patch.color = input.color;
+  if (input.category !== undefined) patch.category = input.category;
+
+  await ref.update(patch);
+  return eventFromDoc(eventId, (await ref.get()).data() as Record<string, unknown>);
 }
 
 export async function deleteCalendarEvent(

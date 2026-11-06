@@ -22,9 +22,27 @@ export const userUpdateSchema = z.object({
   notification_prefs: z.record(z.string(), z.unknown()).optional(),
 });
 
+const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+export const quietHoursSchema = z.object({
+  start: timeSchema,
+  end: timeSchema,
+});
+
+export const reminderSettingsSchema = z.object({
+  digest_time: timeSchema.optional(),
+  bins_reminder_time: timeSchema.optional(),
+  bill_reminder_days: z.number().int().min(0).max(60).optional(),
+  bill_reminder_time: timeSchema.optional(),
+  calendar_reminder_minutes: z.number().int().min(0).max(10080).optional(),
+  quiet_hours: quietHoursSchema.nullable().optional(),
+});
+
 export const householdUpdateSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   house_type: z.string().trim().min(1).max(50).optional(),
+  reminder_settings: reminderSettingsSchema.optional(),
 });
 
 export const joinHouseholdSchema = z.object({
@@ -38,7 +56,12 @@ export const roomCreateSchema = z.object({
   sort_order: z.number().int().default(0),
 });
 
-export const roomUpdateSchema = roomCreateSchema.partial();
+export const roomUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  room_type: z.string().trim().max(50).optional(),
+  floor: z.number().int().nullable().optional(),
+  sort_order: z.number().int().optional(),
+});
 
 export const bulkRoomsSchema = z.object({
   rooms: z.array(roomCreateSchema).min(1),
@@ -51,11 +74,22 @@ export const choreTemplateCreateSchema = z.object({
   name: z.string().trim().min(1).max(150),
   description: z.string().nullable().optional(),
   task_type: z.enum(['recurring', 'one_off']).default('recurring'),
-  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  due_date: dateSchema.nullable().optional(),
+  start_date: dateSchema.nullable().optional(),
   frequency: z
     .enum(['daily', 'every_n_days', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'])
     .default('weekly'),
   frequency_days: z.number().int().positive().nullable().optional(),
+  weekdays: z.array(z.number().int().min(0).max(6)).nullable().optional(),
+  monthly_mode: z.enum(['day_of_month', 'nth_weekday']).nullable().optional(),
+  monthly_day: z.number().int().min(1).max(31).nullable().optional(),
+  monthly_nth: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(-1)]).nullable().optional(),
+  monthly_weekday: z.number().int().min(0).max(6).nullable().optional(),
+  end_date: dateSchema.nullable().optional(),
+  due_time: timeSchema.nullable().optional(),
+  reminder_mode: z.enum(['none', 'at_time', 'before_due']).default('none'),
+  reminder_time: timeSchema.nullable().optional(),
+  reminder_offset_minutes: z.number().int().min(0).max(10080).nullable().optional(),
   estimated_minutes: z.number().int().positive().nullable().optional(),
   priority: z.enum(['low', 'medium', 'high']).default('medium'),
   assignment_mode: assignmentModeSchema.optional(),
@@ -63,7 +97,35 @@ export const choreTemplateCreateSchema = z.object({
   rotation_member_ids: z.array(z.string().min(1)).nullable().optional(),
 });
 
-export const choreTemplateUpdateSchema = choreTemplateCreateSchema.partial().extend({
+export const choreTemplateUpdateSchema = z.object({
+  room_id: z.string().min(1).nullable().optional(),
+  name: z.string().trim().min(1).max(150).optional(),
+  description: z.string().nullable().optional(),
+  task_type: z.enum(['recurring', 'one_off']).optional(),
+  due_date: dateSchema.nullable().optional(),
+  start_date: dateSchema.nullable().optional(),
+  frequency: z
+    .enum(['daily', 'every_n_days', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'])
+    .optional(),
+  frequency_days: z.number().int().positive().nullable().optional(),
+  weekdays: z.array(z.number().int().min(0).max(6)).nullable().optional(),
+  monthly_mode: z.enum(['day_of_month', 'nth_weekday']).nullable().optional(),
+  monthly_day: z.number().int().min(1).max(31).nullable().optional(),
+  monthly_nth: z
+    .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(-1)])
+    .nullable()
+    .optional(),
+  monthly_weekday: z.number().int().min(0).max(6).nullable().optional(),
+  end_date: dateSchema.nullable().optional(),
+  due_time: timeSchema.nullable().optional(),
+  reminder_mode: z.enum(['none', 'at_time', 'before_due']).optional(),
+  reminder_time: timeSchema.nullable().optional(),
+  reminder_offset_minutes: z.number().int().min(0).max(10080).nullable().optional(),
+  estimated_minutes: z.number().int().positive().nullable().optional(),
+  priority: z.enum(['low', 'medium', 'high']).optional(),
+  assignment_mode: assignmentModeSchema.optional(),
+  fixed_assignee_id: z.string().min(1).nullable().optional(),
+  rotation_member_ids: z.array(z.string().min(1)).nullable().optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -74,6 +136,7 @@ export const choreInstanceFilterSchema = z.object({
   assigned_to: z.string().min(1).optional(),
   unassigned: z.enum(['true', 'false']).optional(),
   task_type: z.enum(['recurring', 'one_off']).optional(),
+  closed: z.enum(['true', 'false']).optional(),
 });
 
 export const assignChoreSchema = z.object({
@@ -92,6 +155,18 @@ export const binScheduleCreateSchema = z.object({
   frequency: z.enum(['weekly', 'biweekly', 'monthly']).default('weekly'),
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   reminder_offset_hours: z.number().int().min(0).max(168).default(15),
+  reminder_time: timeSchema.nullable().optional(),
+});
+
+export const binScheduleUpdateSchema = z.object({
+  bin_type: z.string().trim().min(1).max(50).optional(),
+  name: z.string().trim().min(1).max(100).optional(),
+  colour: z.string().trim().min(1).max(50).optional(),
+  collection_day: z.number().int().min(0).max(6).optional(),
+  frequency: z.enum(['weekly', 'biweekly', 'monthly']).optional(),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  reminder_offset_hours: z.number().int().min(0).max(168).optional(),
+  reminder_time: timeSchema.nullable().optional(),
 });
 
 export const binExceptionCreateSchema = z.object({
@@ -112,9 +187,22 @@ export const billCreateSchema = z.object({
   account_reference: z.string().max(100).nullable().optional(),
   notes: z.string().nullable().optional(),
   next_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  reminder_days_before: z.number().int().min(0).max(60).nullable().optional(),
+  reminder_time: timeSchema.nullable().optional(),
 });
 
-export const billUpdateSchema = billCreateSchema.partial().extend({
+export const billUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  provider: z.string().max(100).nullable().optional(),
+  amount_pence: z.number().int().nonnegative().nullable().optional(),
+  frequency: z.enum(['weekly', 'monthly', 'quarterly', 'yearly', 'one_off']).optional(),
+  due_day: z.number().int().min(1).max(31).nullable().optional(),
+  payment_method: z.string().max(50).nullable().optional(),
+  account_reference: z.string().max(100).nullable().optional(),
+  notes: z.string().nullable().optional(),
+  next_due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  reminder_days_before: z.number().int().min(0).max(60).nullable().optional(),
+  reminder_time: timeSchema.nullable().optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -130,7 +218,12 @@ export const shoppingItemCreateSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
-export const shoppingItemUpdateSchema = shoppingItemCreateSchema.partial().extend({
+export const shoppingItemUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(150).optional(),
+  category: z.string().max(50).nullable().optional(),
+  quantity: z.number().int().positive().optional(),
+  unit: z.string().max(20).nullable().optional(),
+  notes: z.string().nullable().optional(),
   is_checked: z.boolean().optional(),
 });
 
@@ -141,7 +234,19 @@ export const calendarEventCreateSchema = z.object({
   end_time: z.string().nullable().optional(),
   all_day: z.boolean().default(false),
   assigned_to: z.string().min(1).nullable().optional(),
-  recurrence_rule: z.string().nullable().optional(),
+  reminder_minutes_before: z.number().int().min(0).max(10080).nullable().optional(),
+  color: z.string().max(30).nullable().optional(),
+  category: z.string().max(50).nullable().optional(),
+});
+
+export const calendarEventUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(150).optional(),
+  description: z.string().nullable().optional(),
+  start_time: z.string().min(1).optional(),
+  end_time: z.string().nullable().optional(),
+  all_day: z.boolean().optional(),
+  assigned_to: z.string().min(1).nullable().optional(),
+  reminder_minutes_before: z.number().int().min(0).max(10080).nullable().optional(),
   color: z.string().max(30).nullable().optional(),
   category: z.string().max(50).nullable().optional(),
 });
@@ -153,7 +258,12 @@ export const noteCreateSchema = z.object({
   category: z.string().max(50).nullable().optional(),
 });
 
-export const noteUpdateSchema = noteCreateSchema.partial();
+export const noteUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(150).optional(),
+  content: z.string().optional(),
+  is_pinned: z.boolean().optional(),
+  category: z.string().max(50).nullable().optional(),
+});
 
 export const pushSubscriptionSchema = z.object({
   endpoint: z.string().url().optional(),

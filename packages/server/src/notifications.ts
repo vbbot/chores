@@ -24,6 +24,15 @@ export async function listNotifications(userId: string): Promise<Notification[]>
   return result.docs.map((doc) => notificationFromDoc(doc.id, doc.data()));
 }
 
+export async function markNotificationRead(
+  userId: string,
+  notificationId: string
+): Promise<void> {
+  await notificationsCollection(userId)
+    .doc(notificationId)
+    .set({ is_read: true }, { merge: true });
+}
+
 export async function markAllNotificationsRead(userId: string): Promise<void> {
   const result = await notificationsCollection(userId).where('is_read', '==', false).get();
   const batch = dbAdmin().batch();
@@ -47,7 +56,7 @@ export async function addNotification(
   });
 }
 
-async function sendPushToUser(
+export async function sendPushToUser(
   userId: string,
   input: { title: string; body: string; url: string }
 ): Promise<number> {

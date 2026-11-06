@@ -66,6 +66,10 @@ export async function updateHouseholdClaim(
   await authAdmin().setCustomUserClaims(uid, { householdId, role });
 }
 
+export async function clearHouseholdClaim(uid: string): Promise<void> {
+  await authAdmin().setCustomUserClaims(uid, {});
+}
+
 export function userRef(uid: string) {
   return usersCollection().doc(uid);
 }

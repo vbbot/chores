@@ -1,6 +1,31 @@
 export type UserRole = 'admin' | 'member';
 export type AssignmentMode = 'anyone' | 'fixed' | 'rotate' | 'balanced';
 export type ChoreTaskType = 'recurring' | 'one_off';
+export type ReminderMode = 'none' | 'at_time' | 'before_due';
+export type MonthlyMode = 'day_of_month' | 'nth_weekday';
+
+export interface QuietHours {
+  start: string;
+  end: string;
+}
+
+export interface ReminderSettings {
+  digest_time: string;
+  bins_reminder_time: string;
+  bill_reminder_days: number;
+  bill_reminder_time: string;
+  calendar_reminder_minutes: number;
+  quiet_hours: QuietHours | null;
+}
+
+export interface NotificationPrefs {
+  digest?: { enabled?: boolean; time?: string | null };
+  chores?: { enabled?: boolean };
+  bins?: { enabled?: boolean; time?: string | null };
+  bills?: { enabled?: boolean; days_before?: number | null; time?: string | null };
+  calendar?: { enabled?: boolean; minutes_before?: number | null };
+  quiet_hours?: { enabled?: boolean };
+}
 
 export interface User {
   id: string;
@@ -8,7 +33,7 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
-  notification_prefs: Record<string, unknown>;
+  notification_prefs: NotificationPrefs;
   ical_token: string | null;
   created_at: string;
 }
@@ -27,6 +52,7 @@ export interface Household {
   name: string;
   house_type: string;
   invite_code: string;
+  reminder_settings?: ReminderSettings;
   created_at: string;
   rooms: Room[];
 }
@@ -47,6 +73,18 @@ export interface ChoreTemplate {
   fixed_assignee_id?: string | null;
   rotation_member_ids?: string[] | null;
   rotation_last_assignee_id?: string | null;
+  start_date?: string | null;
+  recurrence_anchor_date?: string | null;
+  weekdays?: number[] | null;
+  monthly_mode?: MonthlyMode | null;
+  monthly_day?: number | null;
+  monthly_nth?: number | null;
+  monthly_weekday?: number | null;
+  end_date?: string | null;
+  due_time?: string | null;
+  reminder_mode?: ReminderMode;
+  reminder_time?: string | null;
+  reminder_offset_minutes?: number | null;
   next_due_date?: string | null;
   streak_current?: number;
   streak_best?: number;
@@ -62,6 +100,7 @@ export interface ChoreInstance {
   assigned_by?: string | null;
   completed_by: string | null;
   due_date: string;
+  due_time?: string | null;
   completed_at: string | null;
   status: 'pending' | 'completed' | 'skipped';
   task_type?: ChoreTaskType;
@@ -82,6 +121,7 @@ export interface BinSchedule {
   frequency: string;
   start_date: string;
   reminder_offset_hours: number;
+  reminder_time?: string | null;
   is_active: boolean;
   next_collection?: string;
   put_out_at?: string | null;
@@ -119,6 +159,8 @@ export interface Bill {
   account_reference: string | null;
   notes: string | null;
   next_due_date: string | null;
+  reminder_days_before?: number | null;
+  reminder_time?: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -156,7 +198,7 @@ export interface CalendarEvent {
   start_time: string;
   end_time: string | null;
   all_day: boolean;
-  recurrence_rule: string | null;
+  reminder_minutes_before?: number | null;
   color: string | null;
   category: string | null;
   created_at: string;

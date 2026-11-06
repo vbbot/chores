@@ -4,8 +4,11 @@ A UK household management PWA for chores, bin collections, shopping, bills,
 calendar events, and shared notes.
 
 It includes personal and household XP, levels, on-time chore streaks, a progress
-page, previous-evening bin reminders, and rule-based chore suggestions based on
-your rooms, routine, and season.
+page, rule-based chore suggestions, one-off tasks, weekday and monthly recurrence,
+optional due times, workload balancing, and configurable reminder schedules.
+
+The daily brief combines chores, bins, bills, and calendar events. Each member can
+override reminder times, and every item can carry its own reminder setting.
 
 ## Stack
 
@@ -74,8 +77,8 @@ make up-build
 
 Open http://localhost.
 
-The stack contains `frontend`, `cron`, and `nginx`. The `cron` container calls
-protected internal routes at 00:05 and 19:00 Europe/London.
+The stack contains `frontend`, `cron`, and `nginx`. The `cron` container creates
+due chores at 00:05 and runs the reminder engine every 15 minutes, Europe/London.
 
 ## Local development
 

@@ -21,6 +21,7 @@ export async function GET(request: Request) {
       assigned_to: url.searchParams.get('assigned_to') ?? undefined,
       unassigned: url.searchParams.get('unassigned') ?? undefined,
       task_type: url.searchParams.get('task_type') ?? undefined,
+      closed: url.searchParams.get('closed') ?? undefined,
     });
     if (!parsed.success) throw new ApiError(firstZodError(parsed.error), 400);
     return Response.json(await listChoreInstances(householdId, parsed.data));

@@ -6,6 +6,7 @@ export * from './bills';
 export * from './chores';
 export * from './notes';
 export * from './progress';
+export * from './schedule';
 export * from './streaks';
 export * from './suggestions';
 export * from './validation';

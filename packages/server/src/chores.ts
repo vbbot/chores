@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { FieldValue } from 'firebase-admin/firestore';
 
 import type {
   AssignmentMode,
@@ -12,16 +13,19 @@ import type {
 } from '@chores/domain';
 import {
   addDays,
-  calculateNextDueAfter,
-  calculateNextDueDate,
+  choreOnTime,
   completionXp,
   defaultAssignmentMode,
   emptyMemberLoad,
+  firstChoreDueDate,
   londonDateString,
   londonToday,
+  nextChoreDueAfter,
+  nextChoreDueDate,
   nextRotationAssignee,
   pickBalancedAssignee,
   templateStreak,
+  weekdayIndex,
 } from '@chores/domain';
 
 import { dbAdmin } from './firebase';
@@ -35,8 +39,19 @@ export type ChoreTemplateInput = {
   description?: string | null;
   task_type?: ChoreTaskType;
   due_date?: string | null;
+  start_date?: string | null;
   frequency?: string;
   frequency_days?: number | null;
+  weekdays?: number[] | null;
+  monthly_mode?: 'day_of_month' | 'nth_weekday' | null;
+  monthly_day?: number | null;
+  monthly_nth?: number | null;
+  monthly_weekday?: number | null;
+  end_date?: string | null;
+  due_time?: string | null;
+  reminder_mode?: 'none' | 'at_time' | 'before_due';
+  reminder_time?: string | null;
+  reminder_offset_minutes?: number | null;
   estimated_minutes?: number | null;
   priority?: string;
   assignment_mode?: AssignmentMode;
@@ -51,6 +66,7 @@ type ChoreInstanceFilter = {
   assigned_to?: string;
   unassigned?: string;
   task_type?: string;
+  closed?: string;
 };
 
 interface AssignmentContext {
@@ -67,12 +83,29 @@ interface AssignmentChoice {
 }
 
 function asTemplate(id: string, data: Record<string, unknown>): ChoreTemplate {
+  const createdDate =
+    typeof data.created_at === 'string'
+      ? londonDateString(new Date(data.created_at))
+      : londonToday();
   return {
     task_type: 'recurring',
     assignment_mode: 'balanced',
     fixed_assignee_id: null,
     rotation_member_ids: null,
     rotation_last_assignee_id: null,
+    start_date: (data.next_due_date as string | undefined) ?? createdDate,
+    recurrence_anchor_date:
+      (data.next_due_date as string | undefined) ?? createdDate,
+    weekdays: null,
+    monthly_mode: null,
+    monthly_day: null,
+    monthly_nth: null,
+    monthly_weekday: null,
+    end_date: null,
+    due_time: null,
+    reminder_mode: 'none',
+    reminder_time: null,
+    reminder_offset_minutes: null,
     ...(data as unknown as Omit<ChoreTemplate, 'id'>),
     id,
   };
@@ -83,6 +116,7 @@ function asInstance(id: string, data: Record<string, unknown>): ChoreInstance {
     task_type: 'recurring',
     assigned_at: null,
     assigned_by: null,
+    due_time: null,
     ...(data as unknown as Omit<ChoreInstance, 'id'>),
     id,
   };
@@ -95,6 +129,19 @@ function instanceId(templateId: string, dueDate: string): string {
 function estimatedMinutes(template: ChoreTemplate | undefined): number {
   return Math.max(1, template?.estimated_minutes ?? 15);
 }
+
+function normalizedWeekdays(
+  value: number[] | null | undefined,
+  fallbackDate: string
+): string {
+  const days =
+    value && value.length > 0
+      ? [...value].sort((a, b) => a - b)
+      : [weekdayIndex(fallbackDate)];
+  return JSON.stringify(days);
+}
+
+
 
 function instanceRef(householdId: string, id: string) {
   return householdCollection(householdId, 'choreInstances').doc(id);
@@ -245,6 +292,7 @@ async function createInstance(
     assigned_by: options?.assignedBy ?? null,
     completed_by: null,
     due_date: dueDate,
+    due_time: template.due_time ?? null,
     completed_at: null,
     status: 'pending' as const,
     task_type: template.task_type ?? 'recurring',
@@ -339,10 +387,27 @@ export async function createChoreTemplate(
     mode === 'rotate' ? rotationIdsFor(baseContext, input.rotation_member_ids) : null;
 
   const today = londonToday();
-  const dueDate =
+  const startDate = input.start_date ?? input.due_date ?? today;
+  const frequency = taskType === 'one_off' ? 'one_off' : input.frequency ?? 'weekly';
+  const firstDue =
     taskType === 'one_off'
-      ? input.due_date ?? today
-      : today;
+      ? startDate
+      : firstChoreDueDate({
+          task_type: taskType,
+          start_date: startDate,
+          frequency,
+          weekdays: input.weekdays ?? null,
+          monthly_mode: input.monthly_mode ?? null,
+          monthly_day: input.monthly_day ?? null,
+          monthly_nth: input.monthly_nth ?? null,
+          monthly_weekday: input.monthly_weekday ?? null,
+          end_date: input.end_date ?? null,
+        }) ?? startDate;
+
+  if (input.end_date && firstDue > input.end_date) {
+    throw new ApiError('End date must be after the first due date', 400);
+  }
+
   const id = randomUUID();
   const template = {
     household_id: householdId,
@@ -354,12 +419,24 @@ export async function createChoreTemplate(
     fixed_assignee_id: fixedAssignee,
     rotation_member_ids: rotationMembers,
     rotation_last_assignee_id: null,
-    frequency: taskType === 'one_off' ? 'one_off' : input.frequency ?? 'weekly',
+    start_date: startDate,
+    recurrence_anchor_date: firstDue,
+    weekdays: input.weekdays ?? null,
+    monthly_mode: input.monthly_mode ?? null,
+    monthly_day: input.monthly_day ?? null,
+    monthly_nth: input.monthly_nth ?? null,
+    monthly_weekday: input.monthly_weekday ?? null,
+    end_date: input.end_date ?? null,
+    due_time: input.due_time ?? null,
+    reminder_mode: input.reminder_mode ?? 'none',
+    reminder_time: input.reminder_time ?? null,
+    reminder_offset_minutes: input.reminder_offset_minutes ?? null,
+    frequency,
     frequency_days: taskType === 'one_off' ? null : input.frequency_days ?? null,
     estimated_minutes: input.estimated_minutes ?? 15,
     priority: input.priority ?? 'medium',
     is_active: true,
-    next_due_date: dueDate,
+    next_due_date: firstDue,
     created_at: new Date().toISOString(),
   };
 
@@ -367,7 +444,7 @@ export async function createChoreTemplate(
 
   const context = await assignmentContext(householdId);
   const created = asTemplate(id, template as unknown as Record<string, unknown>);
-  await createInstance(context, created, dueDate);
+  await createInstance(context, created, firstDue);
 
   return created;
 }
@@ -404,6 +481,21 @@ export async function updateChoreTemplate(
   if (!isOneOff) {
     if (input.frequency !== undefined) patch.frequency = input.frequency;
     if (input.frequency_days !== undefined) patch.frequency_days = input.frequency_days;
+    if (input.start_date !== undefined) patch.start_date = input.start_date;
+    if (input.weekdays !== undefined) patch.weekdays = input.weekdays;
+    if (input.monthly_mode !== undefined) patch.monthly_mode = input.monthly_mode;
+    if (input.monthly_day !== undefined) patch.monthly_day = input.monthly_day;
+    if (input.monthly_nth !== undefined) patch.monthly_nth = input.monthly_nth;
+    if (input.monthly_weekday !== undefined) {
+      patch.monthly_weekday = input.monthly_weekday;
+    }
+    if (input.end_date !== undefined) patch.end_date = input.end_date;
+  }
+  if (input.due_time !== undefined) patch.due_time = input.due_time;
+  if (input.reminder_mode !== undefined) patch.reminder_mode = input.reminder_mode;
+  if (input.reminder_time !== undefined) patch.reminder_time = input.reminder_time;
+  if (input.reminder_offset_minutes !== undefined) {
+    patch.reminder_offset_minutes = input.reminder_offset_minutes;
   }
   if (input.estimated_minutes !== undefined) {
     patch.estimated_minutes = input.estimated_minutes;
@@ -449,22 +541,89 @@ export async function updateChoreTemplate(
     patch.rotation_member_ids = nextRotation;
   }
 
+  const nextFrequency = input.frequency ?? current.frequency;
+  const weekdaysRelevant =
+    nextFrequency === 'weekly' || nextFrequency === 'biweekly';
+  const weekdayFallback =
+    current.next_due_date ?? current.start_date ?? londonToday();
+  const weekdaysChanged =
+    weekdaysRelevant &&
+    normalizedWeekdays(input.weekdays ?? current.weekdays, weekdayFallback) !==
+      normalizedWeekdays(current.weekdays, weekdayFallback);
+
   const scheduleChanged =
     !isOneOff &&
     ((input.frequency !== undefined && input.frequency !== current.frequency) ||
       (input.frequency_days !== undefined &&
-        input.frequency_days !== current.frequency_days));
-
-  if (scheduleChanged) {
-    patch.next_due_date = calculateNextDueDate(
-      input.frequency ?? current.frequency,
-      input.frequency_days ?? current.frequency_days,
-      londonToday()
-    );
-  }
+        input.frequency_days !== current.frequency_days) ||
+      (input.start_date !== undefined && input.start_date !== current.start_date) ||
+      weekdaysChanged ||
+      (input.monthly_mode !== undefined &&
+        input.monthly_mode !== current.monthly_mode) ||
+      (input.monthly_day !== undefined && input.monthly_day !== current.monthly_day) ||
+      (input.monthly_nth !== undefined && input.monthly_nth !== current.monthly_nth) ||
+      (input.monthly_weekday !== undefined &&
+        input.monthly_weekday !== current.monthly_weekday) ||
+      (input.end_date !== undefined && input.end_date !== current.end_date));
 
   if (isOneOff && input.due_date !== undefined && input.due_date !== null) {
     patch.next_due_date = input.due_date;
+    patch.start_date = input.due_date;
+    patch.recurrence_anchor_date = input.due_date;
+  } else if (scheduleChanged) {
+    const candidateStart = input.start_date ?? current.start_date ?? londonToday();
+    const candidate = {
+      ...current,
+      frequency: input.frequency ?? current.frequency,
+      frequency_days:
+        input.frequency_days !== undefined
+          ? input.frequency_days
+          : current.frequency_days,
+      start_date: candidateStart,
+      weekdays:
+        input.weekdays !== undefined ? input.weekdays : current.weekdays,
+      monthly_mode:
+        input.monthly_mode !== undefined
+          ? input.monthly_mode
+          : current.monthly_mode,
+      monthly_day:
+        input.monthly_day !== undefined
+          ? input.monthly_day
+          : current.monthly_day,
+      monthly_nth:
+        input.monthly_nth !== undefined
+          ? input.monthly_nth
+          : current.monthly_nth,
+      monthly_weekday:
+        input.monthly_weekday !== undefined
+          ? input.monthly_weekday
+          : current.monthly_weekday,
+      end_date:
+        input.end_date !== undefined ? input.end_date : current.end_date,
+      recurrence_anchor_date: current.recurrence_anchor_date,
+    } as ChoreTemplate;
+
+    const today = londonToday();
+    const startChanged =
+      input.start_date !== undefined && input.start_date !== current.start_date;
+    let computed = startChanged
+      ? firstChoreDueDate(candidate)
+      : nextChoreDueDate(
+          candidate,
+          current.next_due_date && current.next_due_date >= today
+            ? current.next_due_date
+            : today
+        );
+
+    if (computed && computed < today) {
+      computed = nextChoreDueAfter(candidate, computed, today);
+    }
+
+    patch.next_due_date = computed;
+    if (startChanged) {
+      patch.recurrence_anchor_date = computed ?? input.start_date;
+    }
+    if (!computed) patch.is_active = false;
   }
 
   const assignmentChanged = modeChanged || fixedChanged || rotationChanged;
@@ -478,11 +637,22 @@ export async function updateChoreTemplate(
     (instance) => instance.template_id === templateId && instance.status === 'pending'
   );
 
+  if (!isOneOff && input.due_time !== undefined) {
+    await Promise.all(
+      pending.map((instance) =>
+        instanceRef(householdId, instance.id).update({ due_time: input.due_time })
+      )
+    );
+  }
+
   if (isOneOff) {
     for (const instance of pending) {
       const changes: Record<string, unknown> = {};
       if (input.due_date !== undefined && input.due_date !== null) {
         changes.due_date = input.due_date;
+      }
+      if (input.due_time !== undefined) {
+        changes.due_time = input.due_time;
       }
       if (assignmentChanged) {
         const choice = chooseAssignee(context, updated);
@@ -594,6 +764,8 @@ export async function listChoreInstances(
       if (filter.task_type && instance.task_type !== filter.task_type) return false;
       if (filter.unassigned === 'true' && instance.assigned_to !== null) return false;
       if (filter.unassigned === 'false' && instance.assigned_to === null) return false;
+      if (filter.closed === 'true' && instance.status === 'pending') return false;
+      if (filter.closed === 'false' && instance.status !== 'pending') return false;
       if (
         filter.assigned_to &&
         instance.assigned_to !== filter.assigned_to
@@ -643,19 +815,19 @@ export async function completeChore(
   );
   const isOneOff = template.task_type === 'one_off';
 
-  const today = londonToday();
   const dueDate = instance.due_date;
-  const onTime = today <= dueDate;
+  const onTime = choreOnTime(
+    dueDate,
+    instance.due_time ?? template.due_time,
+    new Date()
+  );
   const xpAwarded = completionXp(template.estimated_minutes, onTime);
   const completedAt = new Date().toISOString();
+  const today = londonToday();
   const nextDue = isOneOff
     ? null
-    : calculateNextDueAfter(
-        template.frequency,
-        template.frequency_days,
-        dueDate,
-        today
-      );
+    : nextChoreDueAfter(template, dueDate, today);
+  const closesSeries = isOneOff || !nextDue;
 
   await dbAdmin().runTransaction(async (tx) => {
     const fresh = await tx.get(ref);
@@ -672,7 +844,7 @@ export async function completeChore(
     });
     tx.update(
       templateRef,
-      isOneOff
+      closesSeries
         ? { is_active: false, next_due_date: null }
         : { next_due_date: nextDue }
     );
@@ -693,7 +865,7 @@ export async function completeChore(
     .get();
   const streak = templateStreak(
     history.docs.map((doc) => doc.data() as ChoreInstance),
-    today
+    londonToday()
   );
 
   return {
@@ -723,15 +895,10 @@ export async function skipChore(
     templateDoc.data() as Record<string, unknown>
   );
   const isOneOff = template.task_type === 'one_off';
-  const today = londonToday();
   const nextDue = isOneOff
     ? null
-    : calculateNextDueAfter(
-        template.frequency,
-        template.frequency_days,
-        instance.due_date,
-        today
-      );
+    : nextChoreDueAfter(template, instance.due_date, londonToday());
+  const closesSeries = isOneOff || !nextDue;
 
   await dbAdmin().runTransaction(async (tx) => {
     const fresh = await tx.get(ref);
@@ -744,7 +911,7 @@ export async function skipChore(
     });
     tx.update(
       templateRef,
-      isOneOff
+      closesSeries
         ? { is_active: false, next_due_date: null }
         : { next_due_date: nextDue }
     );
@@ -759,6 +926,70 @@ export async function skipChore(
       console.error(`Could not create the next chore instance for ${template.id}`, error);
     }
   }
+}
+
+export async function undoChore(
+  householdId: string,
+  instanceIdValue: string
+): Promise<ChoreInstance> {
+  const { ref, instance } = await getInstance(householdId, instanceIdValue);
+  if (instance.status === 'pending') {
+    throw new ApiError('This chore is still open', 409);
+  }
+
+  const all = await householdCollection(householdId, 'choreInstances').get();
+  const laterClosed = all.docs.some((doc) => {
+    const data = doc.data();
+    return (
+      data.template_id === instance.template_id &&
+      data.status !== 'pending' &&
+      String(data.due_date) > instance.due_date
+    );
+  });
+  if (laterClosed) {
+    throw new ApiError('Undo newer occurrences first', 409);
+  }
+
+  const pendingAfter = all.docs.filter((doc) => {
+    const data = doc.data();
+    return (
+      data.template_id === instance.template_id &&
+      data.status === 'pending' &&
+      String(data.due_date) > instance.due_date
+    );
+  });
+
+  const templateRef = householdCollection(householdId, 'choreTemplates').doc(
+    instance.template_id
+  );
+  const templateDoc = await templateRef.get();
+  if (!templateDoc.exists) {
+    throw new ApiError('This chore series was deleted and cannot be restored', 409);
+  }
+
+  const batch = dbAdmin().batch();
+  pendingAfter.forEach((doc) => batch.delete(doc.ref));
+  batch.update(ref, {
+    status: 'pending',
+    completed_by: null,
+    completed_at: null,
+    xp_awarded: FieldValue.delete(),
+    on_time: FieldValue.delete(),
+  });
+  batch.update(templateRef, {
+    is_active: true,
+    next_due_date: instance.due_date,
+  });
+  await batch.commit();
+
+  return {
+    ...instance,
+    status: 'pending',
+    completed_by: null,
+    completed_at: null,
+    xp_awarded: undefined,
+    on_time: undefined,
+  };
 }
 
 export async function assignChore(
@@ -870,7 +1101,10 @@ export async function generateDailyChores(): Promise<number> {
     try {
       const context = await assignmentContext(householdId);
       const templates = context.templates.filter(
-        (template) => template.is_active && template.task_type !== 'one_off'
+        (template) =>
+          template.is_active &&
+          template.task_type !== 'one_off' &&
+          (!template.end_date || template.end_date >= today)
       );
 
       for (const template of templates) {

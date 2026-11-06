@@ -22,6 +22,7 @@ export type BinScheduleInput = {
   frequency?: string;
   start_date: string;
   reminder_offset_hours?: number;
+  reminder_time?: string | null;
 };
 
 function scheduleFromDoc(id: string, data: Record<string, unknown>): BinSchedule {
@@ -82,6 +83,7 @@ export async function createBinSchedule(
     frequency: input.frequency ?? 'weekly',
     start_date: input.start_date,
     reminder_offset_hours: input.reminder_offset_hours ?? 15,
+    reminder_time: input.reminder_time ?? null,
     is_active: true,
     created_at: new Date().toISOString(),
   };
@@ -90,6 +92,43 @@ export async function createBinSchedule(
     id,
     ...schedule,
     next_collection: nextCollection(schedule, londonToday()) ?? undefined,
+  };
+}
+
+export async function updateBinSchedule(
+  householdId: string,
+  scheduleId: string,
+  input: Partial<BinScheduleInput>
+): Promise<BinSchedule> {
+  const ref = householdCollection(householdId, 'binSchedules').doc(scheduleId);
+  if (!(await ref.get()).exists) throw new ApiError('Bin schedule not found', 404);
+
+  const patch: Record<string, unknown> = {};
+  if (input.bin_type !== undefined) patch.bin_type = input.bin_type;
+  if (input.name !== undefined) patch.name = input.name.trim();
+  if (input.colour !== undefined) patch.colour = input.colour;
+  if (input.collection_day !== undefined) patch.collection_day = input.collection_day;
+  if (input.frequency !== undefined) patch.frequency = input.frequency;
+  if (input.start_date !== undefined) patch.start_date = input.start_date;
+  if (input.reminder_offset_hours !== undefined) {
+    patch.reminder_offset_hours = input.reminder_offset_hours;
+  }
+  if (input.reminder_time !== undefined) patch.reminder_time = input.reminder_time;
+
+  await ref.update(patch);
+  const updated = scheduleFromDoc(
+    scheduleId,
+    (await ref.get()).data() as Record<string, unknown>
+  );
+  const exceptions = await listBinExceptions(householdId);
+  return {
+    ...updated,
+    next_collection:
+      nextCollection(
+        updated,
+        londonToday(),
+        exceptions.filter((exception) => exception.schedule_id === scheduleId)
+      ) ?? undefined,
   };
 }
 

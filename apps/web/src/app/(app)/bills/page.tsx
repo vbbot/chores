@@ -16,10 +16,12 @@ import { formatPenceToPounds } from '@/lib/utils';
 function BillRow({
   bill,
   onPay,
+  onEdit,
   onDelete,
 }: {
   bill: Bill;
   onPay: (id: string) => void;
+  onEdit: (bill: Bill) => void;
   onDelete: (id: string) => void;
 }) {
   return (
@@ -52,6 +54,12 @@ function BillRow({
             Mark paid
           </Button>
           <button
+            onClick={() => onEdit(bill)}
+            className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1"
+          >
+            Edit
+          </button>
+          <button
             onClick={() => onDelete(bill.id)}
             className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
           >
@@ -70,42 +78,88 @@ export default function BillsPage() {
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
 
   const [name, setName] = React.useState('');
   const [provider, setProvider] = React.useState('');
   const [amountPounds, setAmountPounds] = React.useState('');
   const [frequency, setFrequency] = React.useState('monthly');
   const [nextDueDate, setNextDueDate] = React.useState('');
+  const [paymentMethod, setPaymentMethod] = React.useState('');
+  const [accountReference, setAccountReference] = React.useState('');
+  const [notes, setNotes] = React.useState('');
+  const [reminderDays, setReminderDays] = React.useState('');
+  const [reminderTime, setReminderTime] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
+  const resetForm = () => {
+    setEditingId(null);
+    setName('');
+    setProvider('');
+    setAmountPounds('');
+    setFrequency('monthly');
+    setNextDueDate('');
+    setPaymentMethod('');
+    setAccountReference('');
+    setNotes('');
+    setReminderDays('');
+    setReminderTime('');
+    setFormError(null);
+  };
+
   const openCreateDialog = () => {
+    resetForm();
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (bill: Bill) => {
+    setEditingId(bill.id);
+    setName(bill.name);
+    setProvider(bill.provider ?? '');
+    setAmountPounds(
+      bill.amount_pence === null ? '' : (bill.amount_pence / 100).toFixed(2)
+    );
+    setFrequency(bill.frequency);
+    setNextDueDate(bill.next_due_date ?? '');
+    setPaymentMethod(bill.payment_method ?? '');
+    setAccountReference(bill.account_reference ?? '');
+    setNotes(bill.notes ?? '');
+    setReminderDays(
+      bill.reminder_days_before === null || bill.reminder_days_before === undefined
+        ? ''
+        : String(bill.reminder_days_before)
+    );
+    setReminderTime(bill.reminder_time ?? '');
     setFormError(null);
     setDialogOpen(true);
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     setSubmitting(true);
     setFormError(null);
     try {
       const amountPence = amountPounds ? Math.round(parseFloat(amountPounds) * 100) : null;
-      await apiFetch('/api/v1/bills', {
-        method: 'POST',
+      await apiFetch(editingId ? `/api/v1/bills/${editingId}` : '/api/v1/bills', {
+        method: editingId ? 'PUT' : 'POST',
         body: JSON.stringify({
           name: name.trim(),
           provider: provider.trim() || null,
           amount_pence: amountPence,
           frequency,
           next_due_date: nextDueDate || null,
+          payment_method: paymentMethod.trim() || null,
+          account_reference: accountReference.trim() || null,
+          notes: notes.trim() || null,
+          reminder_days_before:
+            reminderDays === '' ? null : Number(reminderDays),
+          reminder_time: reminderTime || null,
         }),
       });
       await queryClient.invalidateQueries({ queryKey: queryKeys.bills });
       setDialogOpen(false);
-      setName('');
-      setProvider('');
-      setAmountPounds('');
-      setNextDueDate('');
+      resetForm();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to save bill');
     } finally {
@@ -206,6 +260,7 @@ export default function BillsPage() {
                       key={bill.id}
                       bill={bill}
                       onPay={payBill}
+                      onEdit={openEditDialog}
                       onDelete={deleteBill}
                     />
                   ))}
@@ -215,8 +270,12 @@ export default function BillsPage() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title="Add household bill">
-        <form onSubmit={handleCreate} className="space-y-4">
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        title={editingId ? 'Edit household bill' : 'Add household bill'}
+      >
+        <form onSubmit={handleSave} className="space-y-4">
           {formError && (
             <div
               role="alert"
@@ -296,12 +355,77 @@ export default function BillsPage() {
             />
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="bill_payment" className="block text-sm font-medium mb-1">
+                Payment method (optional)
+              </label>
+              <Input
+                id="bill_payment"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                placeholder="Direct debit"
+              />
+            </div>
+            <div>
+              <label htmlFor="bill_reference" className="block text-sm font-medium mb-1">
+                Account reference (optional)
+              </label>
+              <Input
+                id="bill_reference"
+                value={accountReference}
+                onChange={(e) => setAccountReference(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="bill_notes" className="block text-sm font-medium mb-1">
+              Notes (optional)
+            </label>
+            <textarea
+              id="bill_notes"
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full px-3 py-2 border border-border rounded-card bg-background text-base"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="bill_reminder_days" className="block text-sm font-medium mb-1">
+                Remind days before
+              </label>
+              <Input
+                id="bill_reminder_days"
+                type="number"
+                min="0"
+                max="60"
+                value={reminderDays}
+                onChange={(e) => setReminderDays(e.target.value)}
+                placeholder="Household default"
+              />
+            </div>
+            <div>
+              <label htmlFor="bill_reminder_time" className="block text-sm font-medium mb-1">
+                Reminder time
+              </label>
+              <Input
+                id="bill_reminder_time"
+                type="time"
+                value={reminderTime}
+                onChange={(e) => setReminderTime(e.target.value)}
+              />
+            </div>
+          </div>
+
           <div className="flex justify-end space-x-2 pt-2">
             <Button type="button" variant="secondary" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? 'Saving...' : 'Save bill'}
+              {submitting ? 'Saving...' : editingId ? 'Save changes' : 'Save bill'}
             </Button>
           </div>
         </form>

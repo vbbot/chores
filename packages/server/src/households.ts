@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
-import type { Household, Room, UserRole } from '@chores/domain';
+import type { Household, ReminderSettings, Room, UserRole } from '@chores/domain';
+import { DEFAULT_REMINDER_SETTINGS } from '@chores/domain';
 import type { DocumentSnapshot } from 'firebase-admin/firestore';
 
 import { dbAdmin } from './firebase';
@@ -39,11 +40,23 @@ export async function getHousehold(householdId: string): Promise<Household> {
 
 export async function updateHousehold(
   householdId: string,
-  data: { name?: string; house_type?: string }
+  data: {
+    name?: string;
+    house_type?: string;
+    reminder_settings?: Partial<ReminderSettings>;
+  }
 ): Promise<Household> {
-  const patch: Record<string, string> = {};
+  const patch: Record<string, unknown> = {};
   if (data.name !== undefined) patch.name = data.name.trim();
   if (data.house_type !== undefined) patch.house_type = data.house_type;
+  if (data.reminder_settings !== undefined) {
+    const current = await householdDoc(householdId).get();
+    patch.reminder_settings = {
+      ...DEFAULT_REMINDER_SETTINGS,
+      ...((current.data()?.reminder_settings as Partial<ReminderSettings>) ?? {}),
+      ...data.reminder_settings,
+    };
+  }
   await householdDoc(householdId).update(patch);
   return getHousehold(householdId);
 }
@@ -69,10 +82,27 @@ export async function createHousehold(
     name: name.trim(),
     house_type: houseType,
     invite_code: inviteCode,
+    reminder_settings: DEFAULT_REMINDER_SETTINGS,
     created_at: new Date().toISOString(),
   });
   await batch.commit();
   return { id, inviteCode };
+}
+
+export async function rotateInviteCode(householdId: string): Promise<string> {
+  const ref = householdDoc(householdId);
+  const doc = await ref.get();
+  if (!doc.exists) throw new ApiError('Household not found', 404);
+  const oldCode = String(doc.data()?.invite_code ?? '');
+  const newCode = await uniqueInviteCode();
+  const batch = dbAdmin().batch();
+  if (oldCode) batch.delete(dbAdmin().collection('inviteCodes').doc(oldCode));
+  batch.set(dbAdmin().collection('inviteCodes').doc(newCode), {
+    household_id: householdId,
+  });
+  batch.update(ref, { invite_code: newCode });
+  await batch.commit();
+  return newCode;
 }
 
 export async function householdByInviteCode(code: string): Promise<string> {
@@ -106,6 +136,135 @@ export async function moveUserToHousehold(
   await batch.commit();
   const { updateHouseholdClaim } = await import('./users');
   await updateHouseholdClaim(uid, householdId, role);
+}
+
+export async function exportHouseholdData(householdId: string): Promise<Record<string, unknown>> {
+  const collectionNames = [
+    'rooms',
+    'choreTemplates',
+    'choreInstances',
+    'suggestionDismissals',
+    'binSchedules',
+    'binExceptions',
+    'binActions',
+    'bills',
+    'calendarEvents',
+    'notes',
+    'shoppingLists',
+  ];
+
+  const [household, members, ...collections] = await Promise.all([
+    getHousehold(householdId),
+    import('./users').then(({ listMembers }) => listMembers(householdId)),
+    ...collectionNames.map((name) =>
+      householdCollection(householdId, name).get().then((result) =>
+        result.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+      )
+    ),
+  ]);
+
+  const shoppingLists = collections[collectionNames.indexOf('shoppingLists')] as {
+    id: string;
+  }[];
+  const shoppingWithItems = await Promise.all(
+    shoppingLists.map(async (list) => {
+      const items = await householdCollection(householdId, 'shoppingLists')
+        .doc(list.id)
+        .collection('items')
+        .get();
+      return {
+        ...list,
+        items: items.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+      };
+    })
+  );
+
+  const safeMembers = members.map((member) => {
+    const { ical_token: _icalToken, ...safe } = member;
+    return safe;
+  });
+  const data: Record<string, unknown> = { household, members: safeMembers };
+  collectionNames.forEach((name, index) => {
+    data[name] =
+      name === 'shoppingLists' ? shoppingWithItems : collections[index];
+  });
+  return data;
+}
+
+export async function removeHouseholdMember(
+  householdId: string,
+  memberId: string,
+  actorId: string,
+  actorRole: UserRole
+): Promise<void> {
+  if (memberId !== actorId && actorRole !== 'admin') {
+    throw new ApiError('Only an admin can remove another member', 403);
+  }
+
+  const { listMembers, clearHouseholdClaim, updateHouseholdClaim } = await import(
+    './users'
+  );
+  const members = await listMembers(householdId);
+  const member = members.find((item) => item.id === memberId);
+  if (!member) throw new ApiError('Member not found', 404);
+  if (members.length === 1) {
+    throw new ApiError('A household needs at least one member', 400);
+  }
+
+  const remaining = members.filter((item) => item.id !== memberId);
+  const newAdmin =
+    member.role === 'admin'
+      ? remaining.find((item) => item.role === 'admin') ?? remaining[0]
+      : null;
+
+  const batch = dbAdmin().batch();
+  batch.update(dbAdmin().collection('users').doc(memberId), {
+    household_id: null,
+    role: 'member',
+  });
+  if (newAdmin && newAdmin.role !== 'admin') {
+    batch.update(dbAdmin().collection('users').doc(newAdmin.id), { role: 'admin' });
+  }
+  if (member.ical_token) {
+    batch.delete(dbAdmin().collection('icalFeeds').doc(member.ical_token));
+  }
+
+  const instances = await householdCollection(householdId, 'choreInstances').get();
+  instances.docs.forEach((doc) => {
+    const data = doc.data();
+    if (data.status === 'pending' && data.assigned_to === memberId) {
+      batch.update(doc.ref, { assigned_to: null, assigned_at: null });
+    }
+  });
+
+  const templates = await householdCollection(householdId, 'choreTemplates').get();
+  templates.docs.forEach((doc) => {
+    const data = doc.data();
+    const patch: Record<string, unknown> = {};
+    if (data.assignment_mode === 'fixed' && data.fixed_assignee_id === memberId) {
+      patch.assignment_mode = 'balanced';
+      patch.fixed_assignee_id = null;
+    }
+    if (Array.isArray(data.rotation_member_ids)) {
+      patch.rotation_member_ids = data.rotation_member_ids.filter(
+        (id: string) => id !== memberId
+      );
+    }
+    if (Object.keys(patch).length > 0) batch.update(doc.ref, patch);
+  });
+
+  const events = await householdCollection(householdId, 'calendarEvents').get();
+  events.docs.forEach((doc) => {
+    if (doc.data().assigned_to === memberId) {
+      batch.update(doc.ref, { assigned_to: null });
+    }
+  });
+
+  await batch.commit();
+  await clearHouseholdClaim(memberId);
+  if (newAdmin && newAdmin.role !== 'admin') {
+    await updateHouseholdClaim(newAdmin.id, householdId, 'admin');
+  }
 }
 
 export async function createUserProfile(input: {

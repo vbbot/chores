@@ -32,6 +32,7 @@ export default function BinsPage() {
   const [formError, setFormError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
   const [exceptionSchedule, setExceptionSchedule] = React.useState<BinSchedule | null>(null);
   const [exceptionDialogOpen, setExceptionDialogOpen] = React.useState(false);
 
@@ -40,6 +41,8 @@ export default function BinsPage() {
   const [colour, setColour] = React.useState('black');
   const [collectionDay, setCollectionDay] = React.useState(0);
   const [frequency, setFrequency] = React.useState('weekly');
+  const [startDate, setStartDate] = React.useState(londonDateString());
+  const [reminderTime, setReminderTime] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
   // Exception form state
@@ -51,6 +54,25 @@ export default function BinsPage() {
   const [exceptionSubmitting, setExceptionSubmitting] = React.useState(false);
 
   const openCreateDialog = () => {
+    setEditingId(null);
+    setName('');
+    setColour('black');
+    setCollectionDay(0);
+    setFrequency('weekly');
+    setStartDate(londonDateString());
+    setReminderTime('');
+    setFormError(null);
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (schedule: BinSchedule) => {
+    setEditingId(schedule.id);
+    setName(schedule.name);
+    setColour(schedule.colour);
+    setCollectionDay(schedule.collection_day);
+    setFrequency(schedule.frequency);
+    setStartDate(schedule.start_date);
+    setReminderTime(schedule.reminder_time ?? '');
     setFormError(null);
     setDialogOpen(true);
   };
@@ -74,26 +96,30 @@ export default function BinsPage() {
     }
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     setSubmitting(true);
     setFormError(null);
     try {
-      const today = londonDateString();
-      await apiFetch<BinSchedule>('/api/v1/bins/schedules', {
-        method: 'POST',
-        body: JSON.stringify({
-          bin_type: 'other',
-          name: name.trim(),
-          colour,
-          collection_day: collectionDay,
-          frequency,
-          start_date: today,
-        }),
-      });
+      await apiFetch(
+        editingId
+          ? `/api/v1/bins/schedules/${editingId}`
+          : '/api/v1/bins/schedules',
+        {
+          method: editingId ? 'PUT' : 'POST',
+          body: JSON.stringify({
+            ...(editingId ? {} : { bin_type: 'other' }),
+            name: name.trim(),
+            colour,
+            collection_day: collectionDay,
+            frequency,
+            start_date: startDate,
+            reminder_time: reminderTime || null,
+          }),
+        }
+      );
       setDialogOpen(false);
-      setName('');
       await queryClient.invalidateQueries({ queryKey: queryKeys.bins.all });
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to save schedule');
@@ -225,13 +251,21 @@ export default function BinsPage() {
                   >
                     Change next collection
                   </button>
-                  <button
-                    onClick={() => deleteSchedule(s)}
-                    aria-label={`Delete ${s.name} collection`}
-                    className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => openEditDialog(s)}
+                      className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => deleteSchedule(s)}
+                      aria-label={`Delete ${s.name} collection`}
+                      className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -275,8 +309,12 @@ export default function BinsPage() {
         </section>
       )}
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} title="Add bin schedule">
-        <form onSubmit={handleCreate} className="space-y-4">
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        title={editingId ? 'Edit bin schedule' : 'Add bin schedule'}
+      >
+        <form onSubmit={handleSave} className="space-y-4">
           {formError && (
             <div
               role="alert"
@@ -351,12 +389,38 @@ export default function BinsPage() {
             </select>
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="bin_start" className="block text-sm font-medium mb-1">
+                Start date
+              </label>
+              <Input
+                id="bin_start"
+                type="date"
+                required
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label htmlFor="bin_reminder_time" className="block text-sm font-medium mb-1">
+                Reminder time
+              </label>
+              <Input
+                id="bin_reminder_time"
+                type="time"
+                value={reminderTime}
+                onChange={(e) => setReminderTime(e.target.value)}
+              />
+            </div>
+          </div>
+
           <div className="flex justify-end space-x-2 pt-2">
             <Button type="button" variant="secondary" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? 'Saving...' : 'Save schedule'}
+              {submitting ? 'Saving...' : editingId ? 'Save changes' : 'Save schedule'}
             </Button>
           </div>
         </form>
