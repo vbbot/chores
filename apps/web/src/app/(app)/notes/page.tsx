@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -31,6 +32,7 @@ function noteDate(value: string | null | undefined): string | null {
 }
 
 export default function NotesPage() {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { data, isLoading, error } = useApiQuery<Note[]>(queryKeys.notes, '/api/v1/notes');
@@ -101,7 +103,7 @@ export default function NotesPage() {
   };
 
   const deleteNote = async (id: string) => {
-    if (!window.confirm('Delete this note? This cannot be undone.')) return;
+    if (!(await confirm('Delete this note? This cannot be undone.'))) return;
     setActionError(null);
     try {
       await apiFetch(`/api/v1/notes/${id}`, { method: 'DELETE' });

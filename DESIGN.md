@@ -603,6 +603,7 @@ Dialogs:
 - Panel caps at 90vh and scrolls inside.
 - Escape closes and focus returns to the opener.
 - The page-enter animation must not leave a transform on the route container, because that would break fixed positioning.
+- Destructive actions use the shared confirmation dialog, not the browser-native confirm.
 
 Empty states:
 

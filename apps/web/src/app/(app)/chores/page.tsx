@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { weekdayIndex } from '@chores/domain';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -131,6 +132,7 @@ function templateModeLabel(template: ChoreTemplate, members: User[]): string {
 }
 
 export default function ChoresPage() {
+  const confirm = useConfirm();
   const today = londonDateString();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -522,9 +524,9 @@ export default function ChoresPage() {
     if (!editingId) return;
     const noun = taskType === 'one_off' ? 'one-off task' : 'recurring chore';
     if (
-      !window.confirm(
+      !(await confirm(
         `Delete this ${noun}? Pending work will be removed. Completed history stays.`
-      )
+      ))
     ) {
       return;
     }

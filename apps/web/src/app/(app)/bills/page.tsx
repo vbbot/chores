@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -101,6 +102,7 @@ function BillRow({
 }
 
 export default function BillsPage() {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const { data, isLoading, error, refetch } = useApiQuery<Bill[]>(
     queryKeys.bills,
@@ -210,7 +212,7 @@ export default function BillsPage() {
   };
 
   const deleteBill = async (id: string) => {
-    if (!window.confirm('Delete this bill? This cannot be undone.')) return;
+    if (!(await confirm('Delete this bill? This cannot be undone.'))) return;
     setActionError(null);
     try {
       await apiFetch(`/api/v1/bills/${id}`, { method: 'DELETE' });

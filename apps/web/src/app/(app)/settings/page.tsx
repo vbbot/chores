@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_REMINDER_SETTINGS } from '@chores/domain';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { useTheme } from '@/components/theme-provider';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -77,6 +78,7 @@ function SettingsSection({
 }
 
 export default function SettingsPage() {
+  const confirm = useConfirm();
   const { user, logout, refreshUser } = useAuth();
   const { mode, setMode } = useTheme();
   const queryClient = useQueryClient();
@@ -231,7 +233,7 @@ export default function SettingsPage() {
   };
 
   const deleteRoom = async (room: Room) => {
-    if (!window.confirm(`Delete the room "${room.name}"? Chores in it stay, without a room.`)) {
+    if (!(await confirm(`Delete the room "${room.name}"? Chores in it stay, without a room.`))) {
       return;
     }
     setRoomError(null);
@@ -358,7 +360,7 @@ export default function SettingsPage() {
   };
 
   const rotateInvite = async () => {
-    if (!window.confirm('Generate a new invite code? The old code will stop working.')) {
+    if (!(await confirm('Generate a new invite code? The old code will stop working.'))) {
       return;
     }
     setInviteStatus(null);
@@ -377,7 +379,7 @@ export default function SettingsPage() {
     const message = self
       ? 'Leave this household? Your pending chores will become unassigned.'
       : `Remove ${member.name} from this household? Their pending chores will become unassigned.`;
-    if (!window.confirm(message)) return;
+    if (!(await confirm(message))) return;
     setMemberError(null);
     try {
       await apiFetch(`/api/v1/households/members/${member.id}`, {

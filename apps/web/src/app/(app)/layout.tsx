@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/layout/app-shell';
+import { ConfirmProvider } from '@/components/ui/confirm-provider';
 import { useAuth } from '@/lib/auth';
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -29,5 +30,9 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     return null;
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <ConfirmProvider>
+      <AppShell>{children}</AppShell>
+    </ConfirmProvider>
+  );
 }

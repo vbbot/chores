@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -15,6 +16,7 @@ import { BinException, BinSchedule } from '@/lib/types';
 import { formatDayName } from '@/lib/utils';
 
 export default function BinsPage() {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const {
     data: scheduleData,
@@ -79,9 +81,9 @@ export default function BinsPage() {
 
   const deleteSchedule = async (schedule: BinSchedule) => {
     if (
-      !window.confirm(
+      !(await confirm(
         `Delete the ${schedule.name} collection? Its scheduled changes will be removed too.`
-      )
+      ))
     ) {
       return;
     }

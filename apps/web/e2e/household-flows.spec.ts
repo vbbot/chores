@@ -174,13 +174,15 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(page.getByText('Scheduled changes')).toHaveCount(0);
 
-  page.once('dialog', (dialog) => dialog.accept());
   const generalWaste = page
     .locator('div.rounded-card')
     .filter({ has: page.getByRole('heading', { name: 'General Waste', exact: true }) });
   await generalWaste
     .getByRole('button', { name: 'Delete General Waste collection' })
     .click();
+  const deleteDialog = page.getByRole('dialog', { name: 'Confirm' });
+  await expect(deleteDialog).toBeVisible();
+  await deleteDialog.getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByRole('heading', { name: 'General Waste', exact: true })).toHaveCount(
     0
   );

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { londonWallTimeToIso } from '@chores/domain';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -48,6 +49,7 @@ function groupByDate(events: CalendarEvent[]): Array<[string, CalendarEvent[]]> 
 }
 
 export default function CalendarPage() {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const { data, isLoading, error, refetch } = useApiQuery<CalendarEvent[]>(
     queryKeys.calendar,
@@ -152,7 +154,7 @@ export default function CalendarPage() {
   };
 
   const deleteEvent = async (id: string) => {
-    if (!window.confirm('Delete this calendar event?')) return;
+    if (!(await confirm('Delete this calendar event?'))) return;
     setActionError(null);
     try {
       await apiFetch(`/api/v1/calendar/events/${id}`, { method: 'DELETE' });

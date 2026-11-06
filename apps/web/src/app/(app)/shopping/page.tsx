@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -67,6 +68,7 @@ function ItemRow({
 }
 
 export default function ShoppingPage() {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const { data, isLoading, error } = useApiQuery<ShoppingList[]>(
     queryKeys.shopping,
@@ -141,7 +143,7 @@ export default function ShoppingPage() {
 
   const clearBasket = async () => {
     if (checked.length === 0) return;
-    if (!window.confirm('Remove all checked items from the basket?')) return;
+    if (!(await confirm('Remove all checked items from the basket?'))) return;
     setActionError(null);
     try {
       await Promise.all(
@@ -156,7 +158,7 @@ export default function ShoppingPage() {
   };
 
   const deleteItem = async (itemId: string) => {
-    if (!window.confirm('Remove this item from the shopping list?')) return;
+    if (!(await confirm('Remove this item from the shopping list?'))) return;
     setActionError(null);
     try {
       await apiFetch(`/api/v1/shopping/items/${itemId}`, { method: 'DELETE' });
