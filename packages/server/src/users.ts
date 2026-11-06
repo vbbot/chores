@@ -1,4 +1,4 @@
-import type { User } from '@chores/domain';
+import { normalizeNavigationOrder, type User } from '@chores/domain';
 import type { DocumentSnapshot } from 'firebase-admin/firestore';
 
 import { authAdmin, dbAdmin } from './firebase';
@@ -7,7 +7,12 @@ export const usersCollection = () => dbAdmin().collection('users');
 
 export function profileFromDoc(doc: DocumentSnapshot): User | null {
   if (!doc.exists) return null;
-  return { id: doc.id, ...(doc.data() as Omit<User, 'id'>) };
+  const data = doc.data() as Omit<User, 'id'>;
+  return {
+    ...data,
+    id: doc.id,
+    navigation_order: normalizeNavigationOrder(data.navigation_order),
+  };
 }
 
 export async function getUser(uid: string): Promise<User | null> {
@@ -24,9 +29,13 @@ export async function listMembers(householdId: string): Promise<User[]> {
 
 export async function updateUser(
   uid: string,
-  data: Partial<Pick<User, 'name' | 'notification_prefs'>>
+  data: Partial<Pick<User, 'name' | 'notification_prefs' | 'navigation_order'>>
 ): Promise<User> {
-  await usersCollection().doc(uid).update(data);
+  const update = { ...data };
+  if (update.navigation_order) {
+    update.navigation_order = normalizeNavigationOrder(update.navigation_order);
+  }
+  await usersCollection().doc(uid).update(update);
   const user = await getUser(uid);
   if (!user) throw new Error('User profile missing after update');
   return user;

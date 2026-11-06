@@ -69,7 +69,7 @@ const MOBILE_LABELS: Record<string, string> = {
   Shopping: 'Shop',
 };
 
-/** Navigates with the desktop sidebar, the mobile tab bar, or the More sheet. */
+/** Navigates with the desktop rail, or the mobile tabs and All index. */
 export async function goTo(page: Page, label: string): Promise<void> {
   const desktopLink = page
     .locator('aside')
@@ -79,17 +79,18 @@ export async function goTo(page: Page, label: string): Promise<void> {
     await desktopLink.click();
   } else {
     const mobileLabel = MOBILE_LABELS[label] || label;
-    const tab = page
-      .locator('nav[aria-label="Primary"]')
-      .getByRole('link', { name: mobileLabel, exact: true });
+    const primary = page.locator('nav[aria-label="Primary"]');
+    const tab = primary.getByRole('link', { name: mobileLabel, exact: true });
 
     if (await tab.isVisible().catch(() => false)) {
       await tab.click();
     } else {
-      await page.getByRole('button', { name: 'More', exact: true }).click();
+      await primary.getByRole('link', { name: 'All', exact: true }).click();
+      await page.waitForURL('**/all');
       await page
-        .getByRole('dialog', { name: 'More sections' })
-        .getByRole('link', { name: label, exact: true })
+        .locator('main')
+        .getByRole('link', { name: new RegExp(`^${label}\\b`) })
+        .first()
         .click();
     }
   }

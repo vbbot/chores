@@ -274,15 +274,84 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await page.waitForURL(/\/notes#note-/);
   await expect(page.locator('[id^="note-"]').first()).toBeVisible();
 
-  // 20-21. Settings via the header cog.
+  // 20. Navigation: mobile tabs, All index, and per-user order.
+  const primary = page.locator('nav[aria-label="Primary"]');
+
   if (project === 'mobile') {
-    await page.getByRole('button', { name: 'More', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: 'More sections' })).toBeVisible();
-    await shot(page, project, '20-more-sheet');
-    await page.keyboard.press('Escape');
+    await expect(primary.getByRole('link', { name: 'Home', exact: true })).toBeVisible();
+    await expect(primary.getByRole('link', { name: 'Chores', exact: true })).toBeVisible();
+    await expect(primary.getByRole('link', { name: 'Bins', exact: true })).toBeVisible();
+    await expect(primary.getByRole('link', { name: 'Shop', exact: true })).toBeVisible();
+    await expect(primary.getByRole('link', { name: 'All', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
+    const tabBarBox = await primary.filter({ visible: true }).boundingBox();
+    const viewport = page.viewportSize();
+    expect(tabBarBox).not.toBeNull();
+    expect(tabBarBox!.y).toBeGreaterThan((viewport?.height ?? 800) / 2);
+    await primary.getByRole('link', { name: 'All', exact: true }).click();
+    await page.waitForURL('**/all');
+  } else {
+    await page.getByRole('button', { name: 'Customize navigation' }).click();
+    const railEditor = page.getByRole('dialog', { name: 'Customize navigation' });
+    await expect(railEditor).toBeVisible();
+    await railEditor.getByRole('button', { name: 'Cancel' }).click();
+    await page.goto('/all');
   }
 
-  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'All destinations' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Daily' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Household' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Account' })).toBeVisible();
+  await expect(page.locator('main').getByRole('link', { name: /^Notes/ })).toBeVisible();
+  await shot(page, project, '20-all');
+
+  await page.getByRole('button', { name: 'Edit navigation' }).click();
+  const editor = page.getByRole('dialog', { name: 'Customize navigation' });
+  await expect(editor).toBeVisible();
+  await expect(editor.getByText('Bottom bar', { exact: true })).toBeVisible();
+  await expect(editor.getByText('More in All', { exact: true })).toBeVisible();
+  await shot(page, project, '20-navigation-editor');
+
+  for (let index = 0; index < 3; index += 1) {
+    await editor.getByRole('button', { name: 'Move Notes up' }).click();
+  }
+  await editor.getByRole('button', { name: 'Save' }).click();
+  await expect(editor).toBeHidden();
+  await page.waitForLoadState('networkidle');
+
+  if (project === 'mobile') {
+    await expect(primary.getByRole('link', { name: 'Notes', exact: true })).toBeVisible();
+    await expect(primary.getByRole('link', { name: 'Shop', exact: true })).toHaveCount(0);
+  } else {
+    const railLabels = await page.locator('aside nav a').allTextContents();
+    expect(railLabels.slice(0, 4)).toEqual(['Dashboard', 'Chores', 'Bins', 'Notes']);
+  }
+
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  if (project === 'mobile') {
+    await expect(primary.getByRole('link', { name: 'Notes', exact: true })).toBeVisible();
+  } else {
+    const savedRailLabels = await page.locator('aside nav a').allTextContents();
+    expect(savedRailLabels.slice(0, 4)).toEqual(['Dashboard', 'Chores', 'Bins', 'Notes']);
+  }
+
+  await page.getByRole('button', { name: 'Edit navigation' }).click();
+  const resetEditor = page.getByRole('dialog', { name: 'Customize navigation' });
+  await resetEditor.getByRole('button', { name: 'Reset to default' }).click();
+  await resetEditor.getByRole('button', { name: 'Save' }).click();
+  await expect(resetEditor).toBeHidden();
+  await page.waitForLoadState('networkidle');
+
+  if (project === 'mobile') {
+    await expect(primary.getByRole('link', { name: 'Shop', exact: true })).toBeVisible();
+  } else {
+    const resetRailLabels = await page.locator('aside nav a').allTextContents();
+    expect(resetRailLabels.slice(0, 4)).toEqual(['Dashboard', 'Chores', 'Bins', 'Shopping']);
+  }
+
+  // 21. Settings via the header cog.
+  await page.locator('header').getByRole('link', { name: 'Settings', exact: true }).click();
   await page.waitForLoadState('networkidle');
 
   await expect(page.getByRole('heading', { name: 'Household settings' })).toBeVisible();
@@ -326,6 +395,18 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   });
   await settingsNav.getByRole('link', { name: 'Appearance' }).click();
   await expect(page.locator('#appearance')).toBeInViewport();
+
+  if (project === 'mobile') {
+    await expect(primary.getByRole('link', { name: 'All', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page'
+    );
+    await page.getByRole('button', { name: 'Back' }).click();
+    await page.waitForURL('**/all');
+    await page.locator('header').getByRole('link', { name: 'Settings', exact: true }).click();
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: 'Household settings' })).toBeVisible();
+  }
 
   const addRoomButton = page.getByRole('button', { name: 'Add room' }).first();
   await addRoomButton.click();
