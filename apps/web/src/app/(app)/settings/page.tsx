@@ -50,7 +50,12 @@ function SettingsSection({
   children,
 }: SettingsSectionProps) {
   return (
-    <section id={id} className="scroll-mt-32 border-t border-border pt-6">
+    <section
+      id={id}
+      className={`scroll-mt-32 pt-6 ${
+        id === 'appearance' ? '' : 'border-t border-border'
+      }`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-prose">
           <div className="flex items-center gap-2">
@@ -608,7 +613,7 @@ export default function SettingsPage() {
 
       <nav
         aria-label="Settings sections"
-        className="sticky top-[60px] z-30 -mx-4 border-b border-border bg-background md:-mx-6"
+        className="sticky top-[60px] z-30 -mx-4 bg-background md:-mx-6"
       >
         <div
           ref={tabNavRef}
