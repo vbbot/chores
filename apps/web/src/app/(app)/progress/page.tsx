@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { ProgressBar } from '@/components/progress/progress-bar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -126,12 +127,15 @@ export default function ProgressPage() {
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
+              <caption className="sr-only">
+                This week by household member: chores, bins, and XP.
+              </caption>
               <thead>
                 <tr className="text-left text-xs text-secondary border-b border-border">
-                  <th className="py-2 pr-3 font-semibold">Member</th>
-                  <th className="py-2 pr-3 font-semibold text-right">Chores</th>
-                  <th className="py-2 pr-3 font-semibold text-right">Bins</th>
-                  <th className="py-2 font-semibold text-right">XP</th>
+                  <th scope="col" className="py-2 pr-3 font-semibold">Member</th>
+                  <th scope="col" className="py-2 pr-3 font-semibold text-right">Chores</th>
+                  <th scope="col" className="py-2 pr-3 font-semibold text-right">Bins</th>
+                  <th scope="col" className="py-2 font-semibold text-right">XP</th>
                 </tr>
               </thead>
               <tbody>
@@ -165,12 +169,18 @@ export default function ProgressPage() {
         <CardContent className="space-y-3">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
+              <caption className="sr-only">
+                Workload balance by member: minutes done in the last seven days, open
+                minutes and open chores, and overdue chores.
+              </caption>
               <thead>
                 <tr className="text-left text-xs text-secondary border-b border-border">
-                  <th className="py-2 pr-3 font-semibold">Member</th>
-                  <th className="py-2 pr-3 font-semibold text-right">Done last 7 days</th>
-                  <th className="py-2 pr-3 font-semibold text-right">Open</th>
-                  <th className="py-2 font-semibold text-right">Overdue</th>
+                  <th scope="col" className="py-2 pr-3 font-semibold">Member</th>
+                  <th scope="col" className="py-2 pr-3 font-semibold text-right">
+                    Done last 7 days
+                  </th>
+                  <th scope="col" className="py-2 pr-3 font-semibold text-right">Open</th>
+                  <th scope="col" className="py-2 font-semibold text-right">Overdue</th>
                 </tr>
               </thead>
               <tbody>
@@ -182,7 +192,12 @@ export default function ProgressPage() {
                     </td>
                     <td className="py-3 pr-3 text-right tabular-nums">
                       {member.open_minutes} min
-                      <span className="text-xs text-secondary">
+                      <span className="sr-only">
+                        {', '}
+                        {member.open_chores} open{' '}
+                        {member.open_chores === 1 ? 'chore' : 'chores'}
+                      </span>
+                      <span aria-hidden="true" className="text-xs text-secondary">
                         {' '}
                         ({member.open_chores})
                       </span>
@@ -196,11 +211,19 @@ export default function ProgressPage() {
             </table>
           </div>
           {unassigned.open_chores > 0 && (
-            <p className="text-xs text-secondary">
-              {unassigned.open_chores}{' '}
-              {unassigned.open_chores === 1 ? 'chore is' : 'chores are'} up for
-              grabs, about {unassigned.open_minutes} minutes.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-x-3">
+              <p className="text-xs text-secondary">
+                {unassigned.open_chores}{' '}
+                {unassigned.open_chores === 1 ? 'chore is' : 'chores are'} up for
+                grabs, about {unassigned.open_minutes} minutes.
+              </p>
+              <Link
+                href="/chores"
+                className="inline-flex min-h-[44px] items-center text-xs font-semibold underline underline-offset-4 transition-colors hover:text-secondary"
+              >
+                View chores
+              </Link>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -211,22 +234,34 @@ export default function ProgressPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-7 gap-2">
-            {summary.week.map((day) => (
-              <div
-                key={day.date}
-                aria-label={`${formatUkDate(day.date)}: ${day.completed} completed`}
-                className={`min-h-[64px] border rounded-card p-2 text-center ${
-                  day.completed > 0
-                    ? 'border-foreground bg-foreground text-background'
-                    : 'border-border text-secondary'
-                }`}
-              >
-                <div className="text-xs font-semibold">{dayLabel(day.date)}</div>
-                <div className="text-sm font-semibold tabular-nums mt-1">
-                  {day.completed}
+            {summary.week.map((day) => {
+              const isToday = day.date === summary.today;
+              const stateClass =
+                day.completed > 0
+                  ? 'bg-foreground text-background'
+                  : isToday
+                    ? 'text-accent'
+                    : 'text-secondary';
+              const borderClass = isToday
+                ? 'border-accent'
+                : day.completed > 0
+                  ? 'border-foreground'
+                  : 'border-border';
+              return (
+                <div
+                  key={day.date}
+                  aria-current={isToday ? 'date' : undefined}
+                  aria-label={`${isToday ? 'Today, ' : ''}${formatUkDate(day.date)}: ${day.completed} completed`}
+                  className={`min-h-[64px] border rounded-card p-2 text-center ${stateClass} ${borderClass}`}
+                >
+                  {isToday && <span className="sr-only">Today</span>}
+                  <div className="text-xs font-semibold">{dayLabel(day.date)}</div>
+                  <div className="text-sm font-semibold tabular-nums mt-1">
+                    {day.completed}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>

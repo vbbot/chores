@@ -2,12 +2,14 @@
 
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { useQueryClient } from '@tanstack/react-query';
+import { daysBetween } from '@chores/domain';
 import { apiFetch } from '@/lib/api';
-import { addDays, formatUkDate, londonDateString } from '@/lib/dates';
+import { addDays, dueLabel, londonDateString } from '@/lib/dates';
 import { useApiQuery } from '@/lib/query';
 import { queryKeys } from '@/lib/query-keys';
 import { Bill } from '@/lib/types';
@@ -15,53 +17,81 @@ import { formatPenceToPounds } from '@/lib/utils';
 
 function BillRow({
   bill,
+  today,
   onPay,
   onEdit,
   onDelete,
 }: {
   bill: Bill;
+  today: string;
   onPay: (id: string) => void;
   onEdit: (bill: Bill) => void;
   onDelete: (id: string) => void;
 }) {
+  const overdue = Boolean(bill.next_due_date && bill.next_due_date < today);
+  const daysOverdue =
+    overdue && bill.next_due_date ? daysBetween(bill.next_due_date, today) : 0;
+  const dueText = bill.next_due_date
+    ? overdue
+      ? daysOverdue === 1
+        ? '1 day overdue'
+        : `${daysOverdue} days overdue`
+      : dueLabel(bill.next_due_date, today)
+    : null;
+
   return (
-    <div className="border border-border rounded-card p-3 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h3 className="font-semibold text-base">{bill.name}</h3>
-        <p className="text-xs text-secondary mt-0.5">
-          {bill.provider ? `${bill.provider} • ` : ''}
-          Repeats {bill.frequency.replace('_', ' ')}
-        </p>
-        {bill.next_due_date && (
-          <p className="text-xs text-secondary mt-1">
-            Next due:{' '}
-            <span className="text-foreground font-medium">
-              {formatUkDate(bill.next_due_date)}
-            </span>
+    <div
+      id={`bill-${bill.id}`}
+      className="border border-border rounded-card p-3 scroll-mt-24 target:bg-surface"
+    >
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <h3 className="font-semibold text-base leading-snug break-words">
+            {bill.name}
+          </h3>
+          <p className="text-xs text-secondary mt-0.5 break-words">
+            {bill.provider ? `${bill.provider} • ` : ''}
+            Repeats {bill.frequency.replace('_', ' ')}
           </p>
-        )}
-      </div>
-      <div className="text-right space-y-2">
-        <span className="text-base font-semibold block tabular-nums">
-          {formatPenceToPounds(bill.amount_pence)}
-        </span>
-        <div className="flex items-center justify-end gap-2">
+          {dueText && (
+            <p
+              className={
+                overdue
+                  ? 'text-xs text-destructive font-medium mt-1'
+                  : 'text-xs text-secondary mt-1'
+              }
+            >
+              {dueText}
+            </p>
+          )}
+        </div>
+        <div className="text-right">
+          <span className="text-base font-semibold tabular-nums whitespace-nowrap block">
+            {formatPenceToPounds(bill.amount_pence)}
+          </span>
+        </div>
+        <div className="col-span-2 flex flex-wrap items-center gap-x-2 gap-y-1 pt-1">
           <Button
             onClick={() => onPay(bill.id)}
             variant="secondary"
-            className="text-xs px-3 py-1"
+            className="text-xs px-3"
+            aria-label={`Mark ${bill.name} as paid`}
           >
             Mark paid
           </Button>
           <button
+            type="button"
             onClick={() => onEdit(bill)}
-            className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1"
+            className="inline-flex min-h-[44px] items-center rounded-btn px-2 text-xs text-secondary hover:text-foreground"
+            aria-label={`Edit ${bill.name}`}
           >
             Edit
           </button>
           <button
+            type="button"
             onClick={() => onDelete(bill.id)}
-            className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
+            className="inline-flex min-h-[44px] items-center rounded-btn px-2 text-xs text-secondary hover:text-destructive"
+            aria-label={`Remove ${bill.name}`}
           >
             Remove
           </button>
@@ -72,8 +102,12 @@ function BillRow({
 }
 
 export default function BillsPage() {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
-  const { data, isLoading, error } = useApiQuery<Bill[]>(queryKeys.bills, '/api/v1/bills');
+  const { data, isLoading, error, refetch } = useApiQuery<Bill[]>(
+    queryKeys.bills,
+    '/api/v1/bills'
+  );
   const bills = data ?? [];
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
@@ -178,7 +212,7 @@ export default function BillsPage() {
   };
 
   const deleteBill = async (id: string) => {
-    if (!window.confirm('Delete this bill? This cannot be undone.')) return;
+    if (!(await confirm('Delete this bill? This cannot be undone.'))) return;
     setActionError(null);
     try {
       await apiFetch(`/api/v1/bills/${id}`, { method: 'DELETE' });
@@ -206,15 +240,68 @@ export default function BillsPage() {
         <div role="alert" className="p-4 border border-destructive text-destructive rounded-card text-sm">
           {error instanceof Error ? error.message : 'Could not load bills.'}
         </div>
+        <Button onClick={() => refetch()} variant="secondary">
+          Try again
+        </Button>
       </div>
     );
   }
 
   const today = londonDateString();
-  const soon = addDays(today, 7);
-  const dueSoon = bills.filter((bill) => bill.next_due_date && bill.next_due_date <= soon);
-  const later = bills.filter((bill) => bill.next_due_date && bill.next_due_date > soon);
-  const noDate = bills.filter((bill) => !bill.next_due_date);
+  const weekEnd = addDays(today, 7);
+  const upcomingBills = bills.filter(
+    (bill) =>
+      bill.next_due_date &&
+      bill.next_due_date >= today &&
+      bill.next_due_date <= weekEnd
+  );
+  const upcomingStated = upcomingBills.filter(
+    (bill) => bill.amount_pence !== null
+  );
+  const upcomingTotal = upcomingStated.reduce(
+    (total, bill) => total + (bill.amount_pence ?? 0),
+    0
+  );
+  const upcomingWithoutAmount = upcomingBills.length - upcomingStated.length;
+
+  const sortByDueDate = (items: Bill[]) =>
+    [...items].sort(
+      (a, b) =>
+        (a.next_due_date ?? '').localeCompare(b.next_due_date ?? '') ||
+        a.name.localeCompare(b.name)
+    );
+
+  const groups = [
+    {
+      title: 'Overdue',
+      items: bills.filter(
+        (bill) => bill.next_due_date && bill.next_due_date < today
+      ),
+    },
+    {
+      title: 'Due today',
+      items: bills.filter((bill) => bill.next_due_date === today),
+    },
+    {
+      title: 'Next 7 days',
+      items: bills.filter(
+        (bill) =>
+          bill.next_due_date &&
+          bill.next_due_date > today &&
+          bill.next_due_date <= weekEnd
+      ),
+    },
+    {
+      title: 'Later',
+      items: bills.filter(
+        (bill) => bill.next_due_date && bill.next_due_date > weekEnd
+      ),
+    },
+    {
+      title: 'No date',
+      items: bills.filter((bill) => !bill.next_due_date),
+    },
+  ].map((group) => ({ ...group, items: sortByDueDate(group.items) }));
 
   return (
     <div className="space-y-6">
@@ -242,31 +329,58 @@ export default function BillsPage() {
           onAction={openCreateDialog}
         />
       ) : (
-        <div className="space-y-8">
-          {[
-            { title: 'Due soon', items: dueSoon },
-            { title: 'Later', items: later },
-            { title: 'No date', items: noDate },
-          ]
-            .filter((group) => group.items.length > 0)
-            .map((group) => (
-              <section key={group.title} className="space-y-3">
-                <h2 className="text-lg font-semibold border-b border-border pb-2">
-                  {group.title}
-                </h2>
-                <div className="space-y-2">
-                  {group.items.map((bill) => (
-                    <BillRow
-                      key={bill.id}
-                      bill={bill}
-                      onPay={payBill}
-                      onEdit={openEditDialog}
-                      onDelete={deleteBill}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
+        <div className="space-y-6">
+          {upcomingBills.length === 0 ? (
+            <p className="text-sm text-secondary">
+              Nothing due today or in the next 7 days.
+            </p>
+          ) : upcomingStated.length === 0 ? (
+            <p className="text-sm text-secondary">
+              {upcomingBills.length}{' '}
+              {upcomingBills.length === 1 ? 'bill' : 'bills'} due today or in the
+              next 7 days. No amounts set.
+            </p>
+          ) : (
+            <p className="text-sm text-secondary">
+              <span className="text-base font-semibold text-foreground tabular-nums">
+                {formatPenceToPounds(upcomingTotal)}
+              </span>{' '}
+              due today or in the next 7 days across {upcomingBills.length}{' '}
+              {upcomingBills.length === 1 ? 'bill' : 'bills'}.
+              {upcomingWithoutAmount > 0 && (
+                <>
+                  {' '}
+                  {upcomingWithoutAmount}{' '}
+                  {upcomingWithoutAmount === 1 ? 'bill has' : 'bills have'} no
+                  amount.
+                </>
+              )}
+            </p>
+          )}
+
+          <div className="space-y-8">
+            {groups
+              .filter((group) => group.items.length > 0)
+              .map((group) => (
+                <section key={group.title} className="space-y-3">
+                  <h2 className="text-lg font-semibold border-b border-border pb-2">
+                    {group.title}
+                  </h2>
+                  <div className="space-y-2">
+                    {group.items.map((bill) => (
+                      <BillRow
+                        key={bill.id}
+                        bill={bill}
+                        today={today}
+                        onPay={payBill}
+                        onEdit={openEditDialog}
+                        onDelete={deleteBill}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+          </div>
         </div>
       )}
 

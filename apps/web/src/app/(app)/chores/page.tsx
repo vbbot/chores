@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { weekdayIndex } from '@chores/domain';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { Dialog } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -18,6 +19,7 @@ import {
   ChoreSuggestion,
   ChoreTaskType,
   ChoreTemplate,
+  ProgressSummary,
   Room,
   User,
 } from '@/lib/types';
@@ -116,7 +118,7 @@ function ownerLabel(
   currentUserId?: string
 ): string {
   if (!instance.assigned_to) return 'Anyone';
-  if (instance.assigned_to === currentUserId) return 'You';
+  if (instance.assigned_to === currentUserId) return 'you';
   return members.find((member) => member.id === instance.assigned_to)?.name ?? 'Unknown';
 }
 
@@ -130,6 +132,7 @@ function templateModeLabel(template: ChoreTemplate, members: User[]): string {
 }
 
 export default function ChoresPage() {
+  const confirm = useConfirm();
   const today = londonDateString();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -154,6 +157,10 @@ export default function ChoresPage() {
   const suggestionsQuery = useApiQuery<ChoreSuggestion[]>(
     queryKeys.suggestions,
     '/api/v1/suggestions'
+  );
+  const progressQuery = useApiQuery<ProgressSummary>(
+    queryKeys.progress,
+    '/api/v1/progress'
   );
 
   const templates = templatesQuery.data ?? [];
@@ -219,7 +226,6 @@ export default function ChoresPage() {
   const [reminderTime, setReminderTime] = React.useState('09:00');
   const [reminderOffset, setReminderOffset] = React.useState(60);
   const [estimatedMinutes, setEstimatedMinutes] = React.useState(15);
-  const [priority, setPriority] = React.useState<'low' | 'medium' | 'high'>('medium');
   const [assignmentMode, setAssignmentMode] = React.useState<AssignmentMode>('balanced');
   const [fixedAssigneeId, setFixedAssigneeId] = React.useState('');
   const [rotationMemberIds, setRotationMemberIds] = React.useState<string[]>([]);
@@ -259,7 +265,6 @@ export default function ChoresPage() {
     setReminderTime('09:00');
     setReminderOffset(60);
     setEstimatedMinutes(15);
-    setPriority('medium');
     setAssignmentMode(members.length > 0 ? 'balanced' : 'anyone');
     setFixedAssigneeId(members[0]?.id ?? '');
     setRotationMemberIds(members.map((member) => member.id));
@@ -277,7 +282,6 @@ export default function ChoresPage() {
     setRoomId(suggestion.room_id ?? '');
     setFrequency(suggestion.frequency);
     setEstimatedMinutes(suggestion.estimated_minutes);
-    setPriority(suggestion.priority);
     setDialogOpen(true);
   };
 
@@ -306,7 +310,6 @@ export default function ChoresPage() {
     setReminderTime(template.reminder_time ?? template.due_time ?? '09:00');
     setReminderOffset(template.reminder_offset_minutes ?? 60);
     setEstimatedMinutes(template.estimated_minutes ?? 15);
-    setPriority(template.priority);
     setAssignmentMode(template.assignment_mode ?? 'balanced');
     setFixedAssigneeId(template.fixed_assignee_id ?? members[0]?.id ?? '');
     setRotationMemberIds(
@@ -335,6 +338,16 @@ export default function ChoresPage() {
       return;
     }
 
+    if (taskType === 'recurring' && endDate && endDate < startDate) {
+      setFormError('End date must be on or after the start date.');
+      return;
+    }
+
+    if (reminderMode === 'before_due' && !dueTime) {
+      setFormError('Set a due time before choosing a before-due reminder.');
+      return;
+    }
+
     setSubmitting(true);
     setFormError(null);
     try {
@@ -342,7 +355,6 @@ export default function ChoresPage() {
         name: name.trim(),
         room_id: roomId || null,
         estimated_minutes: estimatedMinutes,
-        priority,
         due_time: dueTime || null,
         reminder_mode: reminderMode,
         reminder_time: reminderMode === 'at_time' ? reminderTime : null,
@@ -477,6 +489,24 @@ export default function ChoresPage() {
     }
   };
 
+  const claimChore = async (id: string) => {
+    if (!user) return;
+    setBusyId(id);
+    setActionError(null);
+    try {
+      await apiFetch(`/api/v1/chores/instances/${id}/assign`, {
+        method: 'POST',
+        body: JSON.stringify({ assigned_to: user.id }),
+      });
+      setStatusMessage('Chore claimed.');
+      await refreshChores();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not claim this chore.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const dismissSuggestion = async (id: string) => {
     setActionError(null);
     try {
@@ -494,9 +524,9 @@ export default function ChoresPage() {
     if (!editingId) return;
     const noun = taskType === 'one_off' ? 'one-off task' : 'recurring chore';
     if (
-      !window.confirm(
+      !(await confirm(
         `Delete this ${noun}? Pending work will be removed. Completed history stays.`
-      )
+      ))
     ) {
       return;
     }
@@ -526,6 +556,17 @@ export default function ChoresPage() {
     if (scope === 'open') return instance.assigned_to === null;
     return true;
   });
+
+  const balancedNext = React.useMemo(() => {
+    const balance = progressQuery.data?.balance ?? [];
+    if (balance.length === 0) return null;
+    return [...balance].sort(
+      (a, b) =>
+        a.open_minutes + a.done_minutes - (b.open_minutes + b.done_minutes) ||
+        a.open_chores - b.open_chores ||
+        a.name.localeCompare(b.name)
+    )[0];
+  }, [progressQuery.data]);
 
   const loading =
     !templatesQuery.data &&
@@ -594,7 +635,7 @@ export default function ChoresPage() {
       <section className="space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-2">
           <h2 className="text-lg font-semibold">Due now</h2>
-          <span className="text-xs text-secondary">{dueInstances.length} pending</span>
+          <span className="text-xs text-secondary">{filteredDue.length} pending</span>
         </div>
 
         {members.length > 1 && (
@@ -623,11 +664,19 @@ export default function ChoresPage() {
 
         {filteredDue.length === 0 ? (
           <EmptyState
-            title={scope === 'mine' ? 'Nothing assigned to you' : 'Nothing due'}
+            title={
+              scope === 'mine'
+                ? 'Nothing assigned to you'
+                : scope === 'open'
+                  ? 'Nothing up for grabs'
+                  : 'Nothing due'
+            }
             description={
               scope === 'mine'
                 ? 'You have no chores due today or overdue.'
-                : 'No chores are due today or overdue.'
+                : scope === 'open'
+                  ? 'No unassigned chores are due today or overdue.'
+                  : 'No chores are due today or overdue.'
             }
             actionLabel="Add a one-off task"
             onAction={() => openCreateDialog('one_off')}
@@ -665,48 +714,62 @@ export default function ChoresPage() {
                         </span>
                       </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        onClick={() => completeChore(instance.id)}
-                        variant="secondary"
-                        className="text-xs px-3 py-1"
-                        disabled={busy}
-                      >
-                        Mark done
-                      </Button>
-                      <Button
-                        onClick={() => skipChore(instance.id)}
-                        variant="secondary"
-                        className="text-xs px-3 py-1"
-                        disabled={busy}
-                      >
-                        Skip
-                      </Button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAssigningInstance(instance);
-                          setAssignError(null);
-                        }}
-                        disabled={busy}
-                        className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1 disabled:opacity-50"
-                      >
-                        Assign
-                      </button>
-                      {oneOff && (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {instance.assigned_to === null && user && (
+                          <Button
+                            onClick={() => claimChore(instance.id)}
+                            variant="secondary"
+                            className="text-xs px-3 py-1"
+                            disabled={busy}
+                          >
+                            Claim
+                          </Button>
+                        )}
+                        <Button
+                          onClick={() => completeChore(instance.id)}
+                          variant="secondary"
+                          className="text-xs px-3 py-1"
+                          disabled={busy}
+                        >
+                          Mark done
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => skipChore(instance.id)}
+                          disabled={busy}
+                          className="text-xs text-secondary hover:text-foreground min-h-[44px] px-2 disabled:opacity-50"
+                        >
+                          Skip
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
-                            const template = templates.find(
-                              (item) => item.id === instance.template_id
-                            );
-                            if (template) openEditDialog(template);
+                            setAssigningInstance(instance);
+                            setAssignError(null);
                           }}
-                          className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1"
+                          disabled={busy}
+                          className="text-xs text-secondary hover:text-foreground min-h-[44px] px-2 disabled:opacity-50"
                         >
-                          Edit
+                          Assign
                         </button>
-                      )}
+                        {oneOff && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const template = templates.find(
+                                (item) => item.id === instance.template_id
+                              );
+                              if (template) openEditDialog(template);
+                            }}
+                            className="text-xs text-secondary hover:text-foreground min-h-[44px] px-2"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -822,7 +885,8 @@ export default function ChoresPage() {
               return (
                 <div
                   key={template.id}
-                  className="border border-border rounded-card p-3 flex flex-wrap items-start justify-between gap-3"
+                  id={`template-${template.id}`}
+                  className="border border-border rounded-card p-3 flex flex-wrap items-start justify-between gap-3 scroll-mt-24 target:bg-surface"
                 >
                   <div>
                     <h3 className="font-semibold text-base flex items-center gap-2">
@@ -939,7 +1003,7 @@ export default function ChoresPage() {
               : 'Add recurring chore'
         }
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           {formError && (
             <div
               role="alert"
@@ -949,95 +1013,116 @@ export default function ChoresPage() {
             </div>
           )}
 
-          <div>
-            <label htmlFor="chore_name" className="block text-sm font-medium mb-1">
-              {taskType === 'one_off' ? 'Task name' : 'Chore name'}
-            </label>
-            <Input
-              id="chore_name"
-              required
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder={taskType === 'one_off' ? 'Call the plumber' : 'Deep clean the oven'}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="chore_room" className="block text-sm font-medium mb-1">
-              Room or area
-            </label>
-            <select
-              id="chore_room"
-              value={roomId}
-              onChange={(event) => setRoomId(event.target.value)}
-              className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
-            >
-              <option value="">No specific room</option>
-              {rooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  {room.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {taskType === 'one_off' ? (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="chore_due" className="block text-sm font-medium mb-1">
-                  Due date
-                </label>
-                <Input
-                  id="chore_due"
-                  type="date"
-                  required
-                  value={dueDate}
-                  onChange={(event) => setDueDate(event.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="chore_time" className="block text-sm font-medium mb-1">
-                  Due time (optional)
-                </label>
-                <Input
-                  id="chore_time"
-                  type="time"
-                  value={dueTime}
-                  onChange={(event) => setDueTime(event.target.value)}
-                />
-              </div>
+          <section className="space-y-3">
+            <div className="border-b border-border pb-2">
+              <h3 className="text-sm font-semibold">What</h3>
             </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="chore_start" className="block text-sm font-medium mb-1">
-                  Starts
-                </label>
-                <Input
-                  id="chore_start"
-                  type="date"
-                  required
-                  value={startDate}
-                  onChange={(event) => setStartDate(event.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="chore_time" className="block text-sm font-medium mb-1">
-                  Due time (optional)
-                </label>
-                <Input
-                  id="chore_time"
-                  type="time"
-                  value={dueTime}
-                  onChange={(event) => setDueTime(event.target.value)}
-                />
-              </div>
-            </div>
-          )}
 
-          {taskType === 'recurring' && (
-            <>
+            <div>
+              <label htmlFor="chore_name" className="block text-sm font-medium mb-1">
+                {taskType === 'one_off' ? 'Task name' : 'Chore name'}
+              </label>
+              <Input
+                id="chore_name"
+                required
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder={taskType === 'one_off' ? 'Call the plumber' : 'Deep clean the oven'}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="chore_room" className="block text-sm font-medium mb-1">
+                Room or area
+              </label>
+              <select
+                id="chore_room"
+                value={roomId}
+                onChange={(event) => setRoomId(event.target.value)}
+                className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
+              >
+                <option value="">No specific room</option>
+                {rooms.map((room) => (
+                  <option key={room.id} value={room.id}>
+                    {room.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="chore_mins" className="block text-sm font-medium mb-1">
+                Estimated mins
+              </label>
+              <Input
+                id="chore_mins"
+                type="number"
+                min="1"
+                value={estimatedMinutes}
+                onChange={(event) => setEstimatedMinutes(Number(event.target.value))}
+              />
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <div className="border-b border-border pb-2">
+              <h3 className="text-sm font-semibold">When</h3>
+            </div>
+
+            {taskType === 'one_off' ? (
               <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="chore_due" className="block text-sm font-medium mb-1">
+                    Due date
+                  </label>
+                  <Input
+                    id="chore_due"
+                    type="date"
+                    required
+                    value={dueDate}
+                    onChange={(event) => setDueDate(event.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="chore_time" className="block text-sm font-medium mb-1">
+                    Due time (optional)
+                  </label>
+                  <Input
+                    id="chore_time"
+                    type="time"
+                    value={dueTime}
+                    onChange={(event) => setDueTime(event.target.value)}
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="chore_start" className="block text-sm font-medium mb-1">
+                      Starts
+                    </label>
+                    <Input
+                      id="chore_start"
+                      type="date"
+                      required
+                      value={startDate}
+                      onChange={(event) => setStartDate(event.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="chore_time" className="block text-sm font-medium mb-1">
+                      Due time (optional)
+                    </label>
+                    <Input
+                      id="chore_time"
+                      type="time"
+                      value={dueTime}
+                      onChange={(event) => setDueTime(event.target.value)}
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label htmlFor="chore_freq" className="block text-sm font-medium mb-1">
                     Frequency
@@ -1056,341 +1141,306 @@ export default function ChoresPage() {
                     <option value="yearly">Yearly</option>
                   </select>
                 </div>
-                <div>
-                  <label htmlFor="chore_mins" className="block text-sm font-medium mb-1">
-                    Estimated mins
-                  </label>
-                  <Input
-                    id="chore_mins"
-                    type="number"
-                    min="1"
-                    value={estimatedMinutes}
-                    onChange={(event) => setEstimatedMinutes(Number(event.target.value))}
-                  />
-                </div>
-              </div>
 
-              {(frequency === 'weekly' || frequency === 'biweekly') && (
-                <fieldset>
-                  <legend className="block text-sm font-medium mb-2">Weekdays</legend>
-                  <div className="flex flex-wrap gap-2">
-                    {WEEKDAY_LABELS.map((label, index) => (
-                      <label
-                        key={label}
-                        className={`min-h-[44px] px-3 inline-flex items-center gap-2 rounded-card border text-sm ${
-                          weekdays.includes(index)
-                            ? 'border-accent text-accent bg-surface font-semibold'
-                            : 'border-border'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={weekdays.includes(index)}
-                          onChange={() =>
-                            setWeekdays((previous) =>
-                              previous.includes(index)
-                                ? previous.filter((day) => day !== index)
-                                : [...previous, index]
-                            )
-                          }
-                          className="w-4 h-4 rounded"
-                        />
-                        {label}
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-              )}
-
-              {(frequency === 'monthly' ||
-                frequency === 'quarterly' ||
-                frequency === 'yearly') && (
-                <div className="space-y-3">
-                  <div>
-                    <label htmlFor="monthly_mode" className="block text-sm font-medium mb-1">
-                      Monthly pattern
-                    </label>
-                    <select
-                      id="monthly_mode"
-                      value={monthlyMode}
-                      onChange={(event) =>
-                        setMonthlyMode(
-                          event.target.value as 'day_of_month' | 'nth_weekday'
-                        )
-                      }
-                      className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
-                    >
-                      <option value="day_of_month">Day of the month</option>
-                      <option value="nth_weekday">Nth weekday</option>
-                    </select>
-                  </div>
-                  {monthlyMode === 'day_of_month' ? (
-                    <div>
-                      <label htmlFor="monthly_day" className="block text-sm font-medium mb-1">
-                        Day
-                      </label>
-                      <Input
-                        id="monthly_day"
-                        type="number"
-                        min="1"
-                        max="31"
-                        value={monthlyDay}
-                        onChange={(event) =>
-                          setMonthlyDay(Number(event.target.value))
-                        }
-                      />
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label htmlFor="monthly_nth" className="block text-sm font-medium mb-1">
-                          Which
-                        </label>
-                        <select
-                          id="monthly_nth"
-                          value={monthlyNth}
-                          onChange={(event) =>
-                            setMonthlyNth(Number(event.target.value))
-                          }
-                          className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
-                        >
-                          {[1, 2, 3, 4, -1].map((nth) => (
-                            <option key={nth} value={nth}>
-                              {nth === -1 ? 'Last' : NTH_LABELS[nth - 1]}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
+                {(frequency === 'weekly' || frequency === 'biweekly') && (
+                  <fieldset>
+                    <legend className="block text-sm font-medium mb-2">Weekdays</legend>
+                    <div className="flex flex-wrap gap-2">
+                      {WEEKDAY_LABELS.map((label, index) => (
                         <label
-                          htmlFor="monthly_weekday"
-                          className="block text-sm font-medium mb-1"
+                          key={label}
+                          className={`min-h-[44px] px-3 inline-flex items-center gap-2 rounded-card border text-sm ${
+                            weekdays.includes(index)
+                              ? 'border-accent text-accent bg-surface font-semibold'
+                              : 'border-border'
+                          }`}
                         >
-                          Weekday
+                          <input
+                            type="checkbox"
+                            checked={weekdays.includes(index)}
+                            onChange={() =>
+                              setWeekdays((previous) =>
+                                previous.includes(index)
+                                  ? previous.filter((day) => day !== index)
+                                  : [...previous, index]
+                              )
+                            }
+                            className="w-4 h-4 rounded"
+                          />
+                          {label}
                         </label>
-                        <select
-                          id="monthly_weekday"
-                          value={monthlyWeekday}
-                          onChange={(event) =>
-                            setMonthlyWeekday(Number(event.target.value))
-                          }
-                          className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
-                        >
-                          {WEEKDAY_LABELS.map((label, index) => (
-                            <option key={label} value={index}>
-                              {label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      ))}
                     </div>
-                  )}
-                </div>
+                  </fieldset>
+                )}
+
+                {(frequency === 'monthly' ||
+                  frequency === 'quarterly' ||
+                  frequency === 'yearly') && (
+                  <div className="space-y-3">
+                    <div>
+                      <label htmlFor="monthly_mode" className="block text-sm font-medium mb-1">
+                        Monthly pattern
+                      </label>
+                      <select
+                        id="monthly_mode"
+                        value={monthlyMode}
+                        onChange={(event) =>
+                          setMonthlyMode(
+                            event.target.value as 'day_of_month' | 'nth_weekday'
+                          )
+                        }
+                        className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
+                      >
+                        <option value="day_of_month">Day of the month</option>
+                        <option value="nth_weekday">Nth weekday</option>
+                      </select>
+                    </div>
+                    {monthlyMode === 'day_of_month' ? (
+                      <div>
+                        <label htmlFor="monthly_day" className="block text-sm font-medium mb-1">
+                          Day
+                        </label>
+                        <Input
+                          id="monthly_day"
+                          type="number"
+                          min="1"
+                          max="31"
+                          value={monthlyDay}
+                          onChange={(event) =>
+                            setMonthlyDay(Number(event.target.value))
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label htmlFor="monthly_nth" className="block text-sm font-medium mb-1">
+                            Which
+                          </label>
+                          <select
+                            id="monthly_nth"
+                            value={monthlyNth}
+                            onChange={(event) =>
+                              setMonthlyNth(Number(event.target.value))
+                            }
+                            className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
+                          >
+                            {[1, 2, 3, 4, -1].map((nth) => (
+                              <option key={nth} value={nth}>
+                                {nth === -1 ? 'Last' : NTH_LABELS[nth - 1]}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label
+                            htmlFor="monthly_weekday"
+                            className="block text-sm font-medium mb-1"
+                          >
+                            Weekday
+                          </label>
+                          <select
+                            id="monthly_weekday"
+                            value={monthlyWeekday}
+                            onChange={(event) =>
+                              setMonthlyWeekday(Number(event.target.value))
+                            }
+                            className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
+                          >
+                            {WEEKDAY_LABELS.map((label, index) => (
+                              <option key={label} value={index}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <div className="border-b border-border pb-2">
+              <h3 className="text-sm font-semibold">Who</h3>
+            </div>
+
+            <div>
+              <label htmlFor="assignment_mode" className="block text-sm font-medium mb-1">
+                Who does this?
+              </label>
+              <select
+                id="assignment_mode"
+                value={assignmentMode}
+                onChange={(event) =>
+                  setAssignmentMode(event.target.value as AssignmentMode)
+                }
+                className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
+              >
+                <option value="balanced">Balance automatically</option>
+                <option value="anyone">Anyone</option>
+                <option value="fixed">One person</option>
+                <option value="rotate">Take turns</option>
+              </select>
+              <p className="text-xs text-secondary mt-1">{MODE_HELP[assignmentMode]}</p>
+              {assignmentMode === 'balanced' && balancedNext && (
+                <p className="text-xs text-secondary mt-1">
+                  Next:{' '}
+                  <span className="text-foreground font-medium">{balancedNext.name}</span>,{' '}
+                  {balancedNext.open_minutes + balancedNext.done_minutes}{' '}
+                  {balancedNext.open_minutes + balancedNext.done_minutes === 1
+                    ? 'minute'
+                    : 'minutes'}{' '}
+                  this week
+                </p>
               )}
+            </div>
 
+            {assignmentMode === 'fixed' && (
               <div>
-                <label htmlFor="chore_end" className="block text-sm font-medium mb-1">
-                  Ends (optional)
-                </label>
-                <Input
-                  id="chore_end"
-                  type="date"
-                  value={endDate}
-                  onChange={(event) => setEndDate(event.target.value)}
-                />
-              </div>
-            </>
-          )}
-
-          {taskType === 'one_off' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="task_mins" className="block text-sm font-medium mb-1">
-                  Estimated mins
-                </label>
-                <Input
-                  id="task_mins"
-                  type="number"
-                  min="1"
-                  value={estimatedMinutes}
-                  onChange={(event) => setEstimatedMinutes(Number(event.target.value))}
-                />
-              </div>
-              <div>
-                <label htmlFor="task_priority" className="block text-sm font-medium mb-1">
-                  Priority
+                <label htmlFor="fixed_assignee" className="block text-sm font-medium mb-1">
+                  Person
                 </label>
                 <select
-                  id="task_priority"
-                  value={priority}
+                  id="fixed_assignee"
+                  value={fixedAssigneeId}
+                  onChange={(event) => setFixedAssigneeId(event.target.value)}
+                  className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
+                >
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {assignmentMode === 'rotate' && (
+              <fieldset>
+                <legend className="block text-sm font-medium mb-2">
+                  Members in the rotation
+                </legend>
+                <div className="space-y-2">
+                  {members.map((member) => (
+                    <label
+                      key={member.id}
+                      className="flex items-center gap-2 min-h-[44px] text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={rotationMemberIds.includes(member.id)}
+                        onChange={() => toggleRotationMember(member.id)}
+                        className="w-4 h-4 rounded"
+                      />
+                      {member.name}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-secondary">
+                  Leave all unchecked to include everyone.
+                </p>
+              </fieldset>
+            )}
+          </section>
+
+          <details className="border-t border-border pt-1">
+            <summary className="min-h-[44px] cursor-pointer text-sm font-semibold">
+              More options{' '}
+              <span className="text-xs font-normal text-secondary">
+                {taskType === 'recurring'
+                  ? editingId
+                    ? '(end date, reminders, and active state)'
+                    : '(end date and reminders)'
+                  : '(reminders for this task)'}
+              </span>
+            </summary>
+            <div className="space-y-3 pt-3">
+              {taskType === 'recurring' && (
+                <div>
+                  <label htmlFor="chore_end" className="block text-sm font-medium mb-1">
+                    Ends (optional)
+                  </label>
+                  <Input
+                    id="chore_end"
+                    type="date"
+                    value={endDate}
+                    onChange={(event) => setEndDate(event.target.value)}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="reminder_mode" className="block text-sm font-medium mb-1">
+                  Reminder
+                </label>
+                <select
+                  id="reminder_mode"
+                  value={reminderMode}
                   onChange={(event) =>
-                    setPriority(event.target.value as 'low' | 'medium' | 'high')
+                    setReminderMode(
+                      event.target.value as 'none' | 'at_time' | 'before_due'
+                    )
                   }
                   className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
                 >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
+                  <option value="none">No extra reminder</option>
+                  <option value="at_time">At a set time</option>
+                  <option value="before_due">Before the due time</option>
                 </select>
               </div>
-            </div>
-          )}
-
-          {taskType === 'recurring' && (
-            <div>
-              <label htmlFor="chore_priority" className="block text-sm font-medium mb-1">
-                Priority
-              </label>
-              <select
-                id="chore_priority"
-                value={priority}
-                onChange={(event) =>
-                  setPriority(event.target.value as 'low' | 'medium' | 'high')
-                }
-                className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-          )}
-
-          <div className="space-y-3">
-            <div>
-              <label htmlFor="reminder_mode" className="block text-sm font-medium mb-1">
-                Reminder
-              </label>
-              <select
-                id="reminder_mode"
-                value={reminderMode}
-                onChange={(event) =>
-                  setReminderMode(
-                    event.target.value as 'none' | 'at_time' | 'before_due'
-                  )
-                }
-                className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
-              >
-                <option value="none">No extra reminder</option>
-                <option value="at_time">At a set time</option>
-                <option value="before_due">Before the due time</option>
-              </select>
-            </div>
-            {reminderMode === 'at_time' && (
-              <div>
-                <label htmlFor="reminder_time" className="block text-sm font-medium mb-1">
-                  Remind at
-                </label>
-                <Input
-                  id="reminder_time"
-                  type="time"
-                  value={reminderTime}
-                  onChange={(event) => setReminderTime(event.target.value)}
-                />
-              </div>
-            )}
-            {reminderMode === 'before_due' && (
-              <div>
-                <label htmlFor="reminder_offset" className="block text-sm font-medium mb-1">
-                  Minutes before
-                </label>
-                <Input
-                  id="reminder_offset"
-                  type="number"
-                  min="0"
-                  value={reminderOffset}
-                  onChange={(event) => setReminderOffset(Number(event.target.value))}
-                />
-              </div>
-            )}
-            <p className="text-xs text-secondary">
-              Unassigned chores appear in the daily brief, not in per-chore reminders.
-            </p>
-          </div>
-
-          <div>
-            <label htmlFor="assignment_mode" className="block text-sm font-medium mb-1">
-              Who does this?
-            </label>
-            <select
-              id="assignment_mode"
-              value={assignmentMode}
-              onChange={(event) =>
-                setAssignmentMode(event.target.value as AssignmentMode)
-              }
-              className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
-            >
-              <option value="balanced">Balance automatically</option>
-              <option value="anyone">Anyone</option>
-              <option value="fixed">One person</option>
-              <option value="rotate">Take turns</option>
-            </select>
-            <p className="text-xs text-secondary mt-1">{MODE_HELP[assignmentMode]}</p>
-          </div>
-
-          {assignmentMode === 'fixed' && (
-            <div>
-              <label htmlFor="fixed_assignee" className="block text-sm font-medium mb-1">
-                Person
-              </label>
-              <select
-                id="fixed_assignee"
-                value={fixedAssigneeId}
-                onChange={(event) => setFixedAssigneeId(event.target.value)}
-                className="w-full h-11 px-3 border border-border rounded-card bg-background text-base"
-              >
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {assignmentMode === 'rotate' && (
-            <fieldset>
-              <legend className="block text-sm font-medium mb-2">
-                Members in the rotation
-              </legend>
-              <div className="space-y-2">
-                {members.map((member) => (
-                  <label
-                    key={member.id}
-                    className="flex items-center gap-2 min-h-[44px] text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={rotationMemberIds.includes(member.id)}
-                      onChange={() => toggleRotationMember(member.id)}
-                      className="w-4 h-4 rounded"
-                    />
-                    {member.name}
+              {reminderMode === 'at_time' && (
+                <div>
+                  <label htmlFor="reminder_time" className="block text-sm font-medium mb-1">
+                    Remind at
                   </label>
-                ))}
-              </div>
+                  <Input
+                    id="reminder_time"
+                    type="time"
+                    value={reminderTime}
+                    onChange={(event) => setReminderTime(event.target.value)}
+                  />
+                </div>
+              )}
+              {reminderMode === 'before_due' && (
+                <div>
+                  <label htmlFor="reminder_offset" className="block text-sm font-medium mb-1">
+                    Minutes before
+                  </label>
+                  <Input
+                    id="reminder_offset"
+                    type="number"
+                    min="0"
+                    value={reminderOffset}
+                    onChange={(event) => setReminderOffset(Number(event.target.value))}
+                  />
+                </div>
+              )}
               <p className="text-xs text-secondary">
-                Leave all unchecked to include everyone.
+                Unassigned chores appear in the daily brief, not in per-chore reminders.
               </p>
-            </fieldset>
-          )}
 
-          {editingId && taskType === 'recurring' && (
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="chore_active"
-                checked={isActive}
-                onChange={(event) => setIsActive(event.target.checked)}
-                className="w-4 h-4 rounded"
-              />
-              <label htmlFor="chore_active" className="text-sm font-medium">
-                Recurring chore is active
-              </label>
+              {editingId && taskType === 'recurring' && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="chore_active"
+                    checked={isActive}
+                    onChange={(event) => setIsActive(event.target.checked)}
+                    className="w-4 h-4 rounded"
+                  />
+                  <label htmlFor="chore_active" className="text-sm font-medium">
+                    Recurring chore is active
+                  </label>
+                </div>
+              )}
             </div>
-          )}
+          </details>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+          <div className="sticky bottom-0 z-10 -mx-6 -mb-6 flex flex-wrap items-center justify-between gap-2 border-t border-border bg-background px-6 py-3">
             {editingId ? (
               <Button
                 type="button"
@@ -1445,23 +1495,37 @@ export default function ChoresPage() {
           >
             Anyone
           </button>
-          {members.map((member) => (
-            <button
-              key={member.id}
-              type="button"
-              onClick={() =>
-                assigningInstance && assignChore(assigningInstance.id, member.id)
-              }
-              className={`w-full min-h-[44px] px-3 text-left text-sm rounded-card border transition-colors ${
-                assigningInstance?.assigned_to === member.id
-                  ? 'border-accent text-accent bg-surface font-semibold'
-                  : 'border-border hover:bg-surface'
-              }`}
-            >
-              {member.name}
-              {member.id === user?.id ? ' (you)' : ''}
-            </button>
-          ))}
+          {members.map((member) => {
+            const balance = progressQuery.data?.balance.find(
+              (row) => row.user_id === member.id
+            );
+            return (
+              <button
+                key={member.id}
+                type="button"
+                onClick={() =>
+                  assigningInstance && assignChore(assigningInstance.id, member.id)
+                }
+                className={`w-full min-h-[44px] px-3 text-left text-sm rounded-card border transition-colors ${
+                  assigningInstance?.assigned_to === member.id
+                    ? 'border-accent text-accent bg-surface font-semibold'
+                    : 'border-border hover:bg-surface'
+                }`}
+              >
+                <span className="flex items-baseline justify-between gap-2">
+                  <span>
+                    {member.name}
+                    {member.id === user?.id ? ' (you)' : ''}
+                  </span>
+                  {balance && (
+                    <span className="text-xs text-secondary">
+                      {balance.open_minutes} open min
+                    </span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </Dialog>
     </div>

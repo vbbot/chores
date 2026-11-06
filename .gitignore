@@ -32,3 +32,7 @@ apps/web/screenshots/
 # OS
 .DS_Store
 firebase-debug.log
+
+## Firebase emulator logs
+firestore-debug.log
+ui-debug.log

@@ -50,6 +50,8 @@ export function Header() {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [searchResults, setSearchResults] = React.useState<SearchResults | null>(null);
   const [searching, setSearching] = React.useState(false);
+  const [searchError, setSearchError] = React.useState<string | null>(null);
+  const searchErrorId = React.useId();
   const settingsActive = pathname === '/settings';
 
   const notificationsQuery = useApiQuery<Notification[]>(
@@ -59,6 +61,8 @@ export function Header() {
   );
   const notifications = notificationsQuery.data ?? [];
   const unread = notifications.filter((notification) => !notification.is_read).length;
+  const notificationsLabel =
+    unread > 0 ? `Notifications, ${unread} unread` : 'Notifications, no unread';
 
   const markRead = async (notification: Notification) => {
     try {
@@ -79,6 +83,19 @@ export function Header() {
     router.push(url);
   };
 
+  const openSearchResult = (url: string) => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    setSearchResults(null);
+    const hash = url.split('#')[1];
+    router.push(url);
+    if (hash) {
+      window.setTimeout(() => {
+        document.getElementById(hash)?.scrollIntoView({ block: 'center' });
+      }, 120);
+    }
+  };
+
   const markAllRead = async () => {
     try {
       await apiFetch('/api/v1/notifications/read-all', { method: 'POST' });
@@ -88,13 +105,14 @@ export function Header() {
     }
   };
 
-  const runSearch = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const executeSearch = async () => {
     if (searchQuery.trim().length < 2) {
       setSearchResults(null);
+      setSearchError(null);
       return;
     }
     setSearching(true);
+    setSearchError(null);
     try {
       setSearchResults(
         await apiFetch<SearchResults>(
@@ -102,23 +120,16 @@ export function Header() {
         )
       );
     } catch {
-      setSearchResults({
-        chores: [],
-        notes: [],
-        bills: [],
-        events: [],
-        shopping: [],
-      });
+      setSearchResults(null);
+      setSearchError('Search failed. Check your connection and try again.');
     } finally {
       setSearching(false);
     }
   };
 
-  const openResult = (url: string) => {
-    setSearchOpen(false);
-    setSearchQuery('');
-    setSearchResults(null);
-    router.push(url);
+  const runSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    void executeSearch();
   };
 
   const resultGroups: { label: string; items: SearchHit[] }[] = searchResults
@@ -132,7 +143,7 @@ export function Header() {
     : [];
 
   return (
-    <header className="border-b border-border bg-background px-4 min-h-[60px] flex items-center justify-between">
+    <header className="sticky top-0 z-40 border-b border-border bg-background px-4 min-h-[60px] flex items-center justify-between">
       <Link
         href="/dashboard"
         className="text-xl font-semibold tracking-tight min-h-[44px] inline-flex items-center"
@@ -159,13 +170,16 @@ export function Header() {
             setNotificationsOpen(true);
             notificationsQuery.refetch();
           }}
-          aria-label="Notifications"
+          aria-label={notificationsLabel}
           title="Notifications"
           className="relative min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-btn text-secondary hover:text-foreground hover:bg-surface transition-colors"
         >
           <BellIcon className="w-5 h-5" />
           {unread > 0 && (
-            <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-accent text-accent-foreground text-[10px] font-semibold leading-4 text-center">
+            <span
+              aria-hidden="true"
+              className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-accent text-accent-foreground text-[10px] font-semibold leading-4 text-center"
+            >
               {unread > 9 ? '9+' : unread}
             </span>
           )}
@@ -188,13 +202,18 @@ export function Header() {
 
       <Dialog
         open={searchOpen}
-        onClose={() => setSearchOpen(false)}
+        onClose={() => {
+          setSearchOpen(false);
+          setSearchError(null);
+        }}
         title="Search household"
       >
         <div className="space-y-4">
           <form onSubmit={runSearch} className="flex gap-2">
             <input
               aria-label="Search household"
+              aria-invalid={searchError ? true : undefined}
+              aria-describedby={searchError ? searchErrorId : undefined}
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Chores, notes, bills, events, shopping"
@@ -208,7 +227,25 @@ export function Header() {
             </button>
           </form>
 
-          {searchResults &&
+          {searchError && (
+            <div
+              id={searchErrorId}
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-2 p-3 border border-destructive rounded-card text-sm text-destructive"
+            >
+              <p>{searchError}</p>
+              <button
+                type="button"
+                onClick={() => void executeSearch()}
+                className="min-h-[44px] px-2 text-sm font-semibold underline underline-offset-4"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
+          {!searchError &&
+            searchResults &&
             resultGroups.filter((group) => group.items.length > 0).length === 0 && (
               <p className="text-sm text-secondary">No matches.</p>
             )}
@@ -222,7 +259,7 @@ export function Header() {
                   <button
                     key={`${group.label}-${item.id}`}
                     type="button"
-                    onClick={() => openResult(item.url)}
+                    onClick={() => openSearchResult(item.url)}
                     className="w-full text-left p-3 border border-border rounded-card hover:bg-surface transition-colors"
                   >
                     <p className="text-sm font-semibold">{item.title}</p>
@@ -280,9 +317,14 @@ export function Header() {
                   <p className="text-xs text-secondary mt-1 whitespace-pre-wrap">
                     {notification.body}
                   </p>
-                  <p className="text-[11px] text-secondary mt-2 tabular-nums">
-                    {notificationDate(notification.created_at)}
-                  </p>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <p className="text-[11px] text-secondary tabular-nums">
+                      {notificationDate(notification.created_at)}
+                    </p>
+                    {!notification.is_read && (
+                      <span className="text-[11px] font-semibold text-secondary">Unread</span>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>

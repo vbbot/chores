@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_REMINDER_SETTINGS } from '@chores/domain';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useConfirm } from '@/components/ui/confirm-provider';
 import { useTheme } from '@/components/theme-provider';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,76 @@ import { useAuth } from '@/lib/auth';
 import { getWebPushToken } from '@/lib/firebase';
 import { Household, Room, User } from '@/lib/types';
 
+const settingsSections = [
+  { id: 'appearance', label: 'Appearance' },
+  { id: 'household', label: 'Household' },
+  { id: 'reminders', label: 'Reminders' },
+  { id: 'rooms', label: 'Rooms' },
+  { id: 'members', label: 'Members' },
+  { id: 'calendar-feeds', label: 'Calendar feeds' },
+  { id: 'devices', label: 'Devices' },
+  { id: 'account', label: 'Account' },
+] as const;
+
+const textActionClass =
+  'inline-flex min-h-[44px] items-center px-2 text-sm text-secondary underline-offset-4 transition-colors hover:underline disabled:pointer-events-none disabled:opacity-50';
+
+interface SettingsSectionProps {
+  id: string;
+  title: string;
+  description?: React.ReactNode;
+  action?: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}
+
+function SettingsSection({
+  id,
+  title,
+  description,
+  action,
+  open,
+  onToggle,
+  children,
+}: SettingsSectionProps) {
+  return (
+    <section
+      id={id}
+      className={`scroll-mt-32 pt-6 ${
+        id === 'appearance' ? '' : 'border-t border-border'
+      }`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-prose">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-expanded={open}
+              aria-controls={`${id}-content`}
+              aria-label={`${open ? 'Collapse' : 'Expand'} ${title}`}
+              className="md:hidden inline-flex min-h-[44px] items-center px-2 text-xs text-secondary hover:text-foreground"
+            >
+              {open ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          {description && (
+            <p className="mt-1 text-sm text-secondary">{description}</p>
+          )}
+        </div>
+        {action}
+      </div>
+      <div id={`${id}-content`} className={open ? 'mt-4' : 'mt-4 hidden md:block'}>
+        {children}
+      </div>
+    </section>
+  );
+}
+
 export default function SettingsPage() {
+  const confirm = useConfirm();
   const { user, logout, refreshUser } = useAuth();
   const { mode, setMode } = useTheme();
   const queryClient = useQueryClient();
@@ -43,6 +112,7 @@ export default function SettingsPage() {
   const [reminderStatus, setReminderStatus] = React.useState<string | null>(null);
   const [memberError, setMemberError] = React.useState<string | null>(null);
   const [inviteStatus, setInviteStatus] = React.useState<string | null>(null);
+  const [exportStatus, setExportStatus] = React.useState<string | null>(null);
 
   const [digestTime, setDigestTime] = React.useState(
     DEFAULT_REMINDER_SETTINGS.digest_time
@@ -75,11 +145,15 @@ export default function SettingsPage() {
   const [userCalendarMinutes, setUserCalendarMinutes] = React.useState('');
   const [userQuietEnabled, setUserQuietEnabled] = React.useState(true);
 
+  const householdTouched = React.useRef(false);
+  const userTouched = React.useRef(false);
+
   React.useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
 
   React.useEffect(() => {
+    if (householdTouched.current) return;
     const settings = household?.reminder_settings ?? DEFAULT_REMINDER_SETTINGS;
     setDigestTime(settings.digest_time);
     setBinsTime(settings.bins_reminder_time);
@@ -94,6 +168,7 @@ export default function SettingsPage() {
   }, [household]);
 
   React.useEffect(() => {
+    if (userTouched.current) return;
     const prefs = user?.notification_prefs ?? {};
     setUserDigestEnabled(prefs.digest?.enabled !== false);
     setUserDigestTime(prefs.digest?.time ?? '');
@@ -165,7 +240,7 @@ export default function SettingsPage() {
   };
 
   const deleteRoom = async (room: Room) => {
-    if (!window.confirm(`Delete the room "${room.name}"? Chores in it stay, without a room.`)) {
+    if (!(await confirm(`Delete the room "${room.name}"? Chores in it stay, without a room.`))) {
       return;
     }
     setRoomError(null);
@@ -184,7 +259,7 @@ export default function SettingsPage() {
       setCopiedFeed(label);
       setTimeout(() => setCopiedFeed(null), 2000);
     } catch {
-      setCopyError('Could not copy to the clipboard. Select the URL and copy it manually.');
+      setCopyError('Could not copy to the clipboard. Select the text and copy it manually.');
     }
   };
 
@@ -217,40 +292,37 @@ export default function SettingsPage() {
     }
   };
 
-  const saveReminderSettings = async () => {
+  const saveReminders = async () => {
     setReminderStatus(null);
-    if (!digestTime || !binsTime || !billTime || !calendarMinutes) {
+    const isAdmin = user?.role === 'admin';
+
+    if (
+      isAdmin &&
+      (!digestTime || !binsTime || !billTime || !calendarMinutes)
+    ) {
       setReminderStatus('Fill in all household reminder times.');
       return;
     }
-    try {
-      await apiFetch('/api/v1/households', {
-        method: 'PUT',
-        body: JSON.stringify({
-          reminder_settings: {
-            digest_time: digestTime,
-            bins_reminder_time: binsTime,
-            bill_reminder_days: Number(billDays),
-            bill_reminder_time: billTime,
-            calendar_reminder_minutes: Number(calendarMinutes),
-            quiet_hours: quietEnabled
-              ? { start: quietStart, end: quietEnd }
-              : null,
-          },
-        }),
-      });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.household });
-      setReminderStatus('Household reminder defaults saved.');
-    } catch (err) {
-      setReminderStatus(
-        err instanceof Error ? err.message : 'Could not save reminder settings.'
-      );
-    }
-  };
 
-  const saveNotificationPrefs = async () => {
-    setReminderStatus(null);
     try {
+      if (isAdmin) {
+        await apiFetch('/api/v1/households', {
+          method: 'PUT',
+          body: JSON.stringify({
+            reminder_settings: {
+              digest_time: digestTime,
+              bins_reminder_time: binsTime,
+              bill_reminder_days: Number(billDays),
+              bill_reminder_time: billTime,
+              calendar_reminder_minutes: Number(calendarMinutes),
+              quiet_hours: quietEnabled
+                ? { start: quietStart, end: quietEnd }
+                : null,
+            },
+          }),
+        });
+      }
+
       await apiFetch('/api/v1/auth/me', {
         method: 'PUT',
         body: JSON.stringify({
@@ -277,17 +349,25 @@ export default function SettingsPage() {
           },
         }),
       });
-      await refreshUser();
-      setReminderStatus('Your reminder preferences saved.');
+
+      householdTouched.current = false;
+      userTouched.current = false;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.household }),
+        refreshUser(),
+      ]);
+      setReminderStatus(
+        isAdmin ? 'Reminders saved.' : 'Your reminders saved.'
+      );
     } catch (err) {
       setReminderStatus(
-        err instanceof Error ? err.message : 'Could not save reminder preferences.'
+        err instanceof Error ? err.message : 'Could not save reminders.'
       );
     }
   };
 
   const rotateInvite = async () => {
-    if (!window.confirm('Generate a new invite code? The old code will stop working.')) {
+    if (!(await confirm('Generate a new invite code? The old code will stop working.'))) {
       return;
     }
     setInviteStatus(null);
@@ -306,7 +386,7 @@ export default function SettingsPage() {
     const message = self
       ? 'Leave this household? Your pending chores will become unassigned.'
       : `Remove ${member.name} from this household? Their pending chores will become unassigned.`;
-    if (!window.confirm(message)) return;
+    if (!(await confirm(message))) return;
     setMemberError(null);
     try {
       await apiFetch(`/api/v1/households/members/${member.id}`, {
@@ -330,6 +410,7 @@ export default function SettingsPage() {
   };
 
   const exportData = async () => {
+    setExportStatus(null);
     try {
       const data = await apiFetch<Record<string, unknown>>('/api/v1/households/export');
       const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -345,8 +426,9 @@ export default function SettingsPage() {
         link.remove();
         URL.revokeObjectURL(url);
       }, 0);
+      setExportStatus('Household data exported.');
     } catch (err) {
-      setReminderStatus(
+      setExportStatus(
         err instanceof Error ? err.message : 'Could not export household data.'
       );
     }
@@ -381,538 +463,798 @@ export default function SettingsPage() {
     ? resolveAbsoluteApiUrl(`/api/ical/feed/${feedToken}/bills.ics`, origin)
     : '';
 
+  const calendarFeeds = [
+    { key: 'chores', label: 'Chores feed', url: choresIcalUrl },
+    { key: 'bins', label: 'Bins feed', url: binsIcalUrl },
+    { key: 'bills', label: 'Bills feed', url: billsIcalUrl },
+  ];
+
+  const reminderTypes = [
+    {
+      key: 'digest',
+      label: 'Daily brief',
+      enabled: userDigestEnabled,
+      setEnabled: setUserDigestEnabled,
+    },
+    {
+      key: 'chores',
+      label: 'Chore reminders',
+      enabled: userChoresEnabled,
+      setEnabled: setUserChoresEnabled,
+    },
+    {
+      key: 'bins',
+      label: 'Bin reminders',
+      enabled: userBinsEnabled,
+      setEnabled: setUserBinsEnabled,
+    },
+    {
+      key: 'bills',
+      label: 'Bill reminders',
+      enabled: userBillsEnabled,
+      setEnabled: setUserBillsEnabled,
+    },
+    {
+      key: 'calendar',
+      label: 'Calendar reminders',
+      enabled: userCalendarEnabled,
+      setEnabled: setUserCalendarEnabled,
+    },
+  ];
+
+  const isAdmin = user?.role === 'admin';
+  const [activeSection, setActiveSection] = React.useState<string>(
+    settingsSections[0].id
+  );
+  const [openSections, setOpenSections] = React.useState<Record<string, boolean>>(
+    () =>
+      Object.fromEntries(
+        settingsSections.map((section) => [section.id, true])
+      ) as Record<string, boolean>
+  );
+  const tabNavRef = React.useRef<HTMLDivElement>(null);
+  const tabRefs = React.useRef<Record<string, HTMLAnchorElement | null>>({});
+
+  const toggleSection = (id: string) => {
+    setOpenSections((previous) => ({ ...previous, [id]: !previous[id] }));
+  };
+
+  const jumpToSection = (id: string) => {
+    setOpenSections((previous) => ({ ...previous, [id]: true }));
+    setActiveSection(id);
+    window.setTimeout(() => {
+      const target = document.getElementById(id);
+      const reduceMotion = window.matchMedia(
+        '(prefers-reduced-motion: reduce)'
+      ).matches;
+      target?.scrollIntoView({
+        behavior: reduceMotion ? 'auto' : 'smooth',
+        block: 'start',
+      });
+      window.history.replaceState(null, '', `#${id}`);
+    }, 0);
+  };
+
+  React.useEffect(() => {
+    const updateActive = () => {
+      let current: string = settingsSections[0].id;
+      settingsSections.forEach((section) => {
+        const element = document.getElementById(section.id);
+        if (element && element.getBoundingClientRect().top <= 132) {
+          current = section.id;
+        }
+      });
+      setActiveSection((previous) => (previous === current ? previous : current));
+    };
+
+    updateActive();
+    window.addEventListener('scroll', updateActive, { passive: true });
+    return () => window.removeEventListener('scroll', updateActive);
+  }, []);
+
+  React.useEffect(() => {
+    const nav = tabNavRef.current;
+    const tab = tabRefs.current[activeSection];
+    if (!nav || !tab) return;
+    const navRect = nav.getBoundingClientRect();
+    const tabRect = tab.getBoundingClientRect();
+    const target =
+      nav.scrollLeft +
+      (tabRect.left - navRect.left) -
+      (nav.clientWidth - tab.clientWidth) / 2;
+    nav.scrollTo({ left: Math.max(0, target), behavior: 'auto' });
+  }, [activeSection]);
+
+  React.useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    window.setTimeout(() => {
+      if (hash && settingsSections.some((section) => section.id === hash)) {
+        setOpenSections((previous) => ({ ...previous, [hash]: true }));
+        setActiveSection(hash);
+        document.getElementById(hash)?.scrollIntoView({ block: 'start' });
+        return;
+      }
+      window.scrollTo(0, 0);
+    }, 0);
+  }, []);
+
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="space-y-8">
+      <div className="max-w-prose">
         <h1 className="text-3xl font-semibold tracking-tight">Household settings</h1>
         <p className="text-sm text-secondary">
-          Manage rooms, calendar feeds, notifications, and household members.
+          Set appearance, reminders, rooms, members, calendar feeds, and devices.
         </p>
       </div>
 
       {loadError && (
-        <div role="alert" className="p-3 text-sm rounded-card border border-destructive text-destructive">
+        <div
+          role="alert"
+          className="p-3 text-sm rounded-card border border-destructive text-destructive"
+        >
           {loadError instanceof Error ? loadError.message : 'Failed to load household settings'}
         </div>
       )}
 
-      {/* Household & Invite */}
-      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
-        <CardHeader>
-          <CardTitle className="text-base">Household</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex justify-between items-center text-sm">
-            <span className="text-secondary">Name:</span>
-            <span className="font-semibold">{household?.name || 'Loading...'}</span>
-          </div>
-          <div className="flex justify-between items-center text-sm">
-            <span className="text-secondary">Property type:</span>
-            <span className="font-semibold capitalize">{household?.house_type || 'N/A'}</span>
-          </div>
-          <div className="flex justify-between items-center text-sm border-t border-border pt-2">
-            <span className="text-secondary">Invite code:</span>
-            <span className="font-bold tracking-wider">{household?.invite_code}</span>
-          </div>
-          {inviteStatus && (
-            <p className="text-xs text-secondary">{inviteStatus}</p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {user?.role === 'admin' && (
-              <Button onClick={rotateInvite} variant="secondary" className="text-xs px-3 py-1">
-                Generate new invite code
-              </Button>
-            )}
-            <Button onClick={exportData} variant="secondary" className="text-xs px-3 py-1">
-              Export household data
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {copyError && (
+        <div
+          role="alert"
+          className="p-3 text-sm rounded-card border border-destructive text-destructive"
+        >
+          {copyError}
+        </div>
+      )}
 
-      {/* Reminder Defaults */}
-      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
-        <CardHeader>
-          <CardTitle className="text-base">Household reminders</CardTitle>
-          <p className="text-xs text-secondary">
-            Defaults for everyone. Each person can override the timing in their own settings.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="digest_time" className="block text-sm font-medium mb-1">
-                Daily brief time
-              </label>
-              <Input
-                id="digest_time"
-                type="time"
-                value={digestTime}
-                onChange={(e) => setDigestTime(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="bins_time" className="block text-sm font-medium mb-1">
-                Bin reminder time
-              </label>
-              <Input
-                id="bins_time"
-                type="time"
-                value={binsTime}
-                onChange={(e) => setBinsTime(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="bill_days" className="block text-sm font-medium mb-1">
-                Bill lead days
-              </label>
-              <Input
-                id="bill_days"
-                type="number"
-                min="0"
-                max="60"
-                value={billDays}
-                onChange={(e) => setBillDays(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="bill_time" className="block text-sm font-medium mb-1">
-                Bill reminder time
-              </label>
-              <Input
-                id="bill_time"
-                type="time"
-                value={billTime}
-                onChange={(e) => setBillTime(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="calendar_minutes" className="block text-sm font-medium mb-1">
-                Calendar lead minutes
-              </label>
-              <Input
-                id="calendar_minutes"
-                type="number"
-                min="0"
-                value={calendarMinutes}
-                onChange={(e) => setCalendarMinutes(e.target.value)}
-              />
-            </div>
-          </div>
+      <p className="sr-only" role="status" aria-live="polite">
+        {copiedFeed
+          ? `${copiedFeed === 'invite' ? 'Invite code' : 'Feed URL'} copied.`
+          : ''}
+      </p>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <input
-                id="quiet_enabled"
-                type="checkbox"
-                checked={quietEnabled}
-                onChange={(e) => setQuietEnabled(e.target.checked)}
-                className="w-4 h-4 rounded"
-              />
-              <label htmlFor="quiet_enabled" className="text-sm font-medium">
-                Quiet hours
-              </label>
+      <nav
+        aria-label="Settings sections"
+        className="sticky top-[60px] z-30 -mx-4 bg-background md:-mx-6"
+      >
+        <div
+          ref={tabNavRef}
+          className="flex gap-1 overflow-x-auto px-4 md:px-6"
+        >
+          {settingsSections.map((section) => {
+            const active = activeSection === section.id;
+            return (
+              <a
+                key={section.id}
+                ref={(element) => {
+                  tabRefs.current[section.id] = element;
+                }}
+                href={`#${section.id}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  jumpToSection(section.id);
+                }}
+                aria-current={active ? 'location' : undefined}
+                className={`inline-flex min-h-[52px] items-center whitespace-nowrap border-b-2 px-3 text-sm transition-colors ${
+                  active
+                    ? 'border-accent text-foreground font-semibold'
+                    : 'border-transparent text-secondary hover:text-foreground'
+                }`}
+              >
+                {section.label}
+              </a>
+            );
+          })}
+        </div>
+      </nav>
+
+      <div className="min-w-0 space-y-8">
+          <SettingsSection
+            id="appearance"
+            open={openSections.appearance}
+            onToggle={() => toggleSection('appearance')}
+            title="Appearance"
+            description="Auto follows your device theme."
+          >
+            <div className="flex gap-2" role="group" aria-label="Theme">
+              {(['auto', 'light', 'dark'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setMode(value)}
+                  aria-pressed={mode === value}
+                  className={`flex-1 min-h-[44px] border rounded-card text-sm font-semibold capitalize ${
+                    mode === value
+                      ? 'border-accent text-accent bg-surface'
+                      : 'border-border text-foreground hover:bg-surface'
+                  }`}
+                >
+                  {value}
+                </button>
+              ))}
             </div>
-            {quietEnabled && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="quiet_start" className="block text-sm font-medium mb-1">
-                    From
-                  </label>
-                  <Input
-                    id="quiet_start"
-                    type="time"
-                    value={quietStart}
-                    onChange={(e) => setQuietStart(e.target.value)}
-                  />
+          </SettingsSection>
+
+          <SettingsSection
+            id="household"
+            title="Household"
+            open={openSections.household}
+            onToggle={() => toggleSection('household')}
+          >
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="text-secondary">Name</span>
+                <span className="font-semibold text-right">
+                  {household?.name || 'Loading...'}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="text-secondary">Property type</span>
+                <span className="font-semibold capitalize text-right">
+                  {household?.house_type || 'Not set'}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-end justify-between gap-3 border-t border-border pt-3">
+                <div className="min-w-0">
+                  <p className="text-sm text-secondary">Invite code</p>
+                  <p className="mt-0.5 font-semibold tracking-wider break-all">
+                    {household?.invite_code || 'Loading...'}
+                  </p>
                 </div>
-                <div>
-                  <label htmlFor="quiet_end" className="block text-sm font-medium mb-1">
-                    To
-                  </label>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(household?.invite_code ?? '', 'invite')}
+                  disabled={!household?.invite_code}
+                  aria-label="Copy invite code"
+                  className={`${textActionClass} hover:text-foreground`}
+                >
+                  {copiedFeed === 'invite' ? 'Copied' : 'Copy code'}
+                </button>
+              </div>
+
+              {inviteStatus && (
+                <p role="status" aria-live="polite" className="text-sm text-secondary">
+                  {inviteStatus}
+                </p>
+              )}
+              {exportStatus && (
+                <p role="status" aria-live="polite" className="text-sm text-secondary">
+                  {exportStatus}
+                </p>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {isAdmin && (
+                  <Button onClick={rotateInvite} variant="secondary">
+                    Generate new invite code
+                  </Button>
+                )}
+                <Button onClick={exportData} variant="secondary">
+                  Export household data
+                </Button>
+              </div>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            id="reminders"
+            open={openSections.reminders}
+            onToggle={() => toggleSection('reminders')}
+            title="Reminders"
+            description="Household defaults apply to everyone. Leave an override blank to use the default."
+          >
+            {!isAdmin && (
+              <p className="mb-3 text-sm text-secondary">
+                Only an admin can change household defaults.
+              </p>
+            )}
+
+            <div className="hidden gap-6 pb-2 text-xs font-semibold text-secondary md:grid md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+              <span>Setting</span>
+              <span>Household default</span>
+              <span>Your override</span>
+            </div>
+
+            <div>
+              <div className="grid gap-3 border-t border-border py-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-6">
+                <p className="text-sm font-medium">Daily brief</p>
+                <div className="grid gap-1">
+                  <span className="text-xs font-semibold text-secondary md:sr-only">
+                    Household default
+                  </span>
+                  {isAdmin ? (
+                    <Input
+                      id="digest_time"
+                      type="time"
+                      value={digestTime}
+                      aria-label="Household daily brief time"
+                      onChange={(event) => {
+                        householdTouched.current = true;
+                        setDigestTime(event.target.value);
+                      }}
+                    />
+                  ) : (
+                    <span className="text-sm">{digestTime}</span>
+                  )}
+                </div>
+                <div className="grid gap-1">
+                  <span className="text-xs font-semibold text-secondary md:sr-only">
+                    Your override
+                  </span>
                   <Input
-                    id="quiet_end"
+                    id="user_digest_time"
                     type="time"
-                    value={quietEnd}
-                    onChange={(e) => setQuietEnd(e.target.value)}
+                    value={userDigestTime}
+                    aria-label="Your daily brief time override"
+                    onChange={(event) => {
+                      userTouched.current = true;
+                      setUserDigestTime(event.target.value);
+                    }}
                   />
                 </div>
               </div>
-            )}
-          </div>
 
-          {reminderStatus && (
-            <p className="text-xs text-secondary">{reminderStatus}</p>
-          )}
-          <Button onClick={saveReminderSettings} variant="secondary">
-            Save household reminders
-          </Button>
-        </CardContent>
-      </Card>
+              <div className="grid gap-3 border-t border-border py-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-6">
+                <p className="text-sm font-medium">Bin reminder</p>
+                <div className="grid gap-1">
+                  <span className="text-xs font-semibold text-secondary md:sr-only">
+                    Household default
+                  </span>
+                  {isAdmin ? (
+                    <Input
+                      id="bins_time"
+                      type="time"
+                      value={binsTime}
+                      aria-label="Household bin reminder time"
+                      onChange={(event) => {
+                        householdTouched.current = true;
+                        setBinsTime(event.target.value);
+                      }}
+                    />
+                  ) : (
+                    <span className="text-sm">{binsTime}</span>
+                  )}
+                </div>
+                <div className="grid gap-1">
+                  <span className="text-xs font-semibold text-secondary md:sr-only">
+                    Your override
+                  </span>
+                  <Input
+                    id="user_bins_time"
+                    type="time"
+                    value={userBinsTime}
+                    aria-label="Your bin reminder time override"
+                    onChange={(event) => {
+                      userTouched.current = true;
+                      setUserBinsTime(event.target.value);
+                    }}
+                  />
+                </div>
+              </div>
 
-      {/* Rooms */}
-      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
-        <CardHeader>
-          <div className="flex items-start justify-between gap-3">
-            <CardTitle className="text-base">Rooms ({rooms.length})</CardTitle>
-            <Button onClick={openAddRoom} variant="secondary" className="text-xs px-3 py-1">
-              Add room
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {roomError && !roomDialogOpen && (
-            <div
-              role="alert"
-              className="mb-3 p-3 text-sm rounded-card border border-destructive text-destructive"
-            >
-              {roomError}
+              <div className="grid gap-3 border-t border-border py-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-6">
+                <p className="text-sm font-medium">Bill lead days</p>
+                <div className="grid gap-1">
+                  <span className="text-xs font-semibold text-secondary md:sr-only">
+                    Household default
+                  </span>
+                  {isAdmin ? (
+                    <Input
+                      id="bill_days"
+                      type="number"
+                      min="0"
+                      max="60"
+                      value={billDays}
+                      aria-label="Household bill lead days"
+                      onChange={(event) => {
+                        householdTouched.current = true;
+                        setBillDays(event.target.value);
+                      }}
+                    />
+                  ) : (
+                    <span className="text-sm">{billDays}</span>
+                  )}
+                </div>
+                <div className="grid gap-1">
+                  <span className="text-xs font-semibold text-secondary md:sr-only">
+                    Your override
+                  </span>
+                  <Input
+                    id="user_bill_days"
+                    type="number"
+                    min="0"
+                    max="60"
+                    value={userBillDays}
+                    aria-label="Your bill lead days override"
+                    onChange={(event) => {
+                      userTouched.current = true;
+                      setUserBillDays(event.target.value);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 border-t border-border py-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-6">
+                <p className="text-sm font-medium">Bill reminder time</p>
+                <div className="grid gap-1">
+                  <span className="text-xs font-semibold text-secondary md:sr-only">
+                    Household default
+                  </span>
+                  {isAdmin ? (
+                    <Input
+                      id="bill_time"
+                      type="time"
+                      value={billTime}
+                      aria-label="Household bill reminder time"
+                      onChange={(event) => {
+                        householdTouched.current = true;
+                        setBillTime(event.target.value);
+                      }}
+                    />
+                  ) : (
+                    <span className="text-sm">{billTime}</span>
+                  )}
+                </div>
+                <div className="grid gap-1">
+                  <span className="text-xs font-semibold text-secondary md:sr-only">
+                    Your override
+                  </span>
+                  <Input
+                    id="user_bill_time"
+                    type="time"
+                    value={userBillTime}
+                    aria-label="Your bill reminder time override"
+                    onChange={(event) => {
+                      userTouched.current = true;
+                      setUserBillTime(event.target.value);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 border-t border-border py-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-6">
+                <p className="text-sm font-medium">Calendar lead minutes</p>
+                <div className="grid gap-1">
+                  <span className="text-xs font-semibold text-secondary md:sr-only">
+                    Household default
+                  </span>
+                  {isAdmin ? (
+                    <Input
+                      id="calendar_minutes"
+                      type="number"
+                      min="0"
+                      value={calendarMinutes}
+                      aria-label="Household calendar lead minutes"
+                      onChange={(event) => {
+                        householdTouched.current = true;
+                        setCalendarMinutes(event.target.value);
+                      }}
+                    />
+                  ) : (
+                    <span className="text-sm">{calendarMinutes}</span>
+                  )}
+                </div>
+                <div className="grid gap-1">
+                  <span className="text-xs font-semibold text-secondary md:sr-only">
+                    Your override
+                  </span>
+                  <Input
+                    id="user_calendar_minutes"
+                    type="number"
+                    min="0"
+                    value={userCalendarMinutes}
+                    aria-label="Your calendar lead minutes override"
+                    onChange={(event) => {
+                      userTouched.current = true;
+                      setUserCalendarMinutes(event.target.value);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 border-t border-border py-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-6">
+                <p className="text-sm font-medium">Quiet hours</p>
+                <div className="grid gap-2">
+                  <span className="text-xs font-semibold text-secondary md:sr-only">
+                    Household default
+                  </span>
+                  {isAdmin ? (
+                    <>
+                      <label
+                        htmlFor="quiet_enabled"
+                        className="flex min-h-[44px] items-center gap-2 text-sm font-medium"
+                      >
+                        <input
+                          id="quiet_enabled"
+                          type="checkbox"
+                          checked={quietEnabled}
+                          onChange={(event) => {
+                            householdTouched.current = true;
+                            setQuietEnabled(event.target.checked);
+                          }}
+                          className="w-4 h-4 rounded"
+                        />
+                        Quiet hours
+                      </label>
+                      {quietEnabled && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            id="quiet_start"
+                            type="time"
+                            value={quietStart}
+                            aria-label="Household quiet hours start"
+                            onChange={(event) => {
+                              householdTouched.current = true;
+                              setQuietStart(event.target.value);
+                            }}
+                          />
+                          <Input
+                            id="quiet_end"
+                            type="time"
+                            value={quietEnd}
+                            aria-label="Household quiet hours end"
+                            onChange={(event) => {
+                              householdTouched.current = true;
+                              setQuietEnd(event.target.value);
+                            }}
+                          />
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-sm">
+                      {quietEnabled ? `${quietStart} to ${quietEnd}` : 'Off'}
+                    </span>
+                  )}
+                </div>
+                <div className="grid gap-1">
+                  <span className="text-xs font-semibold text-secondary md:sr-only">
+                    Your override
+                  </span>
+                  <label
+                    htmlFor="user_quiet"
+                    className="flex min-h-[44px] items-center gap-2 text-sm font-medium"
+                  >
+                    <input
+                      id="user_quiet"
+                      type="checkbox"
+                      checked={userQuietEnabled}
+                      onChange={(event) => {
+                        userTouched.current = true;
+                        setUserQuietEnabled(event.target.checked);
+                      }}
+                      className="w-4 h-4 rounded"
+                    />
+                    Respect quiet hours
+                  </label>
+                </div>
+              </div>
             </div>
-          )}
-          {rooms.length === 0 ? (
-            <p className="text-sm text-secondary">
-              No rooms yet. Add rooms so chores can be grouped by area.
-            </p>
-          ) : (
+
+            <fieldset className="mt-2">
+              <legend className="text-sm font-medium">Reminder types</legend>
+              <div className="mt-1 flex flex-wrap gap-x-4">
+                {reminderTypes.map((item) => (
+                  <label
+                    key={item.key}
+                    htmlFor={`pref_${item.key}`}
+                    className="flex min-h-[44px] items-center gap-2 text-sm"
+                  >
+                    <input
+                      id={`pref_${item.key}`}
+                      type="checkbox"
+                      checked={item.enabled}
+                      onChange={(event) => {
+                        userTouched.current = true;
+                        item.setEnabled(event.target.checked);
+                      }}
+                      className="w-4 h-4 rounded"
+                    />
+                    {item.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button onClick={saveReminders} variant="secondary">
+                Save reminders
+              </Button>
+              <p
+                role="status"
+                aria-live="polite"
+                className="min-h-[1.25rem] text-sm text-secondary"
+              >
+                {reminderStatus}
+              </p>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            id="rooms"
+            open={openSections.rooms}
+            onToggle={() => toggleSection('rooms')}
+            title={`Rooms (${rooms.length})`}
+            action={
+              <Button onClick={openAddRoom} variant="secondary">
+                Add room
+              </Button>
+            }
+          >
+            {roomError && !roomDialogOpen && (
+              <div
+                role="alert"
+                className="mb-3 p-3 text-sm rounded-card border border-destructive text-destructive"
+              >
+                {roomError}
+              </div>
+            )}
+            {rooms.length === 0 ? (
+              <p className="text-sm text-secondary">
+                No rooms yet. Add rooms so chores can be grouped by area.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {rooms.map((room) => (
+                  <div
+                    key={room.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-border p-3 text-sm"
+                  >
+                    <span className="min-w-0 font-medium">{room.name}</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openEditRoom(room)}
+                        className={`${textActionClass} hover:text-foreground`}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteRoom(room)}
+                        className={`${textActionClass} hover:text-destructive`}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SettingsSection>
+
+          <SettingsSection
+            id="members"
+            title={`Members (${members.length})`}
+            open={openSections.members}
+            onToggle={() => toggleSection('members')}
+          >
             <div className="space-y-2">
-              {rooms.map((room) => (
+              {members.map((member) => (
                 <div
-                  key={room.id}
-                  className="flex justify-between items-center text-sm p-2 border border-border rounded-card"
+                  key={member.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-border p-3 text-sm"
                 >
-                  <span className="font-medium">{room.name}</span>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => openEditRoom(room)}
-                      className="text-xs underline text-secondary hover:text-foreground"
-                    >
-                      Rename
-                    </button>
-                    <button
-                      onClick={() => deleteRoom(room)}
-                      className="text-xs text-secondary hover:text-destructive"
-                    >
-                      Delete
-                    </button>
+                  <div className="min-w-0">
+                    <span className="block font-semibold">
+                      {member.name}
+                      {member.id === user?.id ? ' (you)' : ''}
+                    </span>
+                    <span className="block text-xs text-secondary break-all">
+                      {member.email}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-secondary capitalize">
+                      {member.role}
+                    </span>
+                    {member.id === user?.id ? (
+                      <button
+                        type="button"
+                        onClick={() => removeMember(member, true)}
+                        className={`${textActionClass} hover:text-destructive`}
+                      >
+                        Leave
+                      </button>
+                    ) : isAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => removeMember(member, false)}
+                        className={`${textActionClass} hover:text-destructive`}
+                      >
+                        Remove
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+            {memberError && (
+              <p role="alert" className="mt-2 text-xs text-destructive">
+                {memberError}
+              </p>
+            )}
+          </SettingsSection>
 
-      {/* Appearance */}
-      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
-        <CardHeader>
-          <CardTitle className="text-base">Appearance</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2" role="group" aria-label="Theme">
-            {(['auto', 'light', 'dark'] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setMode(value)}
-                aria-pressed={mode === value}
-                className={`flex-1 min-h-[44px] border rounded-card text-sm font-semibold capitalize ${
-                  mode === value
-                    ? 'border-accent text-accent bg-surface'
-                    : 'border-border text-foreground hover:bg-surface'
-                }`}
-              >
-                {value}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-secondary mt-2">
-            Auto follows your device theme.
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Household Members */}
-      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
-        <CardHeader>
-          <CardTitle className="text-base">Members ({members.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {members.map((m) => (
-              <div
-                key={m.id}
-                className="flex flex-wrap justify-between items-center gap-2 text-sm p-2 border border-border rounded-card"
-              >
-                <div>
-                  <span className="font-semibold block">
-                    {m.name}
-                    {m.id === user?.id ? ' (you)' : ''}
-                  </span>
-                  <span className="text-xs text-secondary">{m.email}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs border border-border px-2 py-0.5 rounded-card capitalize">
-                    {m.role}
-                  </span>
-                  {m.id === user?.id ? (
+          <SettingsSection
+            id="calendar-feeds"
+            open={openSections['calendar-feeds']}
+            onToggle={() => toggleSection('calendar-feeds')}
+            title="Calendar feeds (iCal)"
+            description="Subscribe from Google Calendar, Apple Calendar, or Outlook using these feed URLs."
+          >
+            <div className="space-y-4">
+              {calendarFeeds.map((feed) => (
+                <div key={feed.key}>
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="font-medium">{feed.label}</span>
                     <button
-                      onClick={() => removeMember(m, true)}
-                      className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
+                      type="button"
+                      onClick={() => copyToClipboard(feed.url, feed.key)}
+                      disabled={!feed.url}
+                      className={`${textActionClass} hover:text-foreground`}
                     >
-                      Leave
+                      {copiedFeed === feed.key ? 'Copied' : 'Copy URL'}
                     </button>
-                  ) : user?.role === 'admin' ? (
-                    <button
-                      onClick={() => removeMember(m, false)}
-                      className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
-                    >
-                      Remove
-                    </button>
-                  ) : null}
+                  </div>
+                  <div className="rounded-card border border-border bg-surface p-2 text-xs break-all select-all">
+                    {feed.url || 'Feed unavailable. Sign in again.'}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-          {memberError && (
-            <p role="alert" className="text-xs text-destructive mt-2">
-              {memberError}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+              ))}
+            </div>
+          </SettingsSection>
 
-      {/* Calendar Feeds (iCal) */}
-      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
-        <CardHeader>
-          <CardTitle className="text-base">Calendar feeds (iCal)</CardTitle>
-          <p className="text-xs text-secondary">
-            Subscribe from Google Calendar, Apple Calendar, or Outlook using these feed URLs.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {copyError && (
-            <div
-              role="alert"
-              className="p-3 text-sm rounded-card border border-destructive text-destructive"
+          <SettingsSection
+            id="devices"
+            open={openSections.devices}
+            onToggle={() => toggleSection('devices')}
+            title="Device notifications"
+            description="Enable browser notifications for reminders on this device."
+          >
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={subscribePush} variant="secondary">
+                Enable notifications on this device
+              </Button>
+              <Button onClick={sendTestNotification} variant="secondary">
+                Send test notification
+              </Button>
+            </div>
+            {pushStatus && (
+              <p
+                role="status"
+                aria-live="polite"
+                className="mt-3 text-sm text-secondary"
+              >
+                {pushStatus}
+              </p>
+            )}
+          </SettingsSection>
+
+          <SettingsSection
+            id="account"
+            open={openSections.account}
+            onToggle={() => toggleSection('account')}
+            title="Account"
+            description="Your sign-in details for this household."
+          >
+            <div className="space-y-1 text-sm">
+              <p>
+                <span className="text-secondary">Signed in as</span>{' '}
+                <span className="font-semibold">{user?.email}</span>
+              </p>
+              <p>
+                <span className="text-secondary">Role</span>{' '}
+                <span className="font-semibold capitalize">{user?.role}</span>
+              </p>
+            </div>
+            <Button
+              onClick={logout}
+              variant="secondary"
+              className="mt-4 w-full text-destructive border-destructive"
             >
-              {copyError}
-            </div>
-          )}
-          <div>
-            <div className="flex justify-between items-center text-sm mb-1">
-              <span className="font-medium">Chores feed</span>
-              <button
-                onClick={() => copyToClipboard(choresIcalUrl, 'chores')}
-                disabled={!choresIcalUrl}
-                className="text-xs underline text-secondary hover:text-foreground"
-              >
-                {copiedFeed === 'chores' ? 'Copied' : 'Copy URL'}
-              </button>
-            </div>
-            <div className="p-2 border border-border rounded-card bg-surface text-xs break-all select-all">
-              {choresIcalUrl || 'Feed unavailable. Sign in again.'}
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between items-center text-sm mb-1">
-              <span className="font-medium">Bins feed</span>
-              <button
-                onClick={() => copyToClipboard(binsIcalUrl, 'bins')}
-                disabled={!binsIcalUrl}
-                className="text-xs underline text-secondary hover:text-foreground"
-              >
-                {copiedFeed === 'bins' ? 'Copied' : 'Copy URL'}
-              </button>
-            </div>
-            <div className="p-2 border border-border rounded-card bg-surface text-xs break-all select-all">
-              {binsIcalUrl || 'Feed unavailable. Sign in again.'}
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between items-center text-sm mb-1">
-              <span className="font-medium">Bills feed</span>
-              <button
-                onClick={() => copyToClipboard(billsIcalUrl, 'bills')}
-                disabled={!billsIcalUrl}
-                className="text-xs underline text-secondary hover:text-foreground"
-              >
-                {copiedFeed === 'bills' ? 'Copied' : 'Copy URL'}
-              </button>
-            </div>
-            <div className="p-2 border border-border rounded-card bg-surface text-xs break-all select-all">
-              {billsIcalUrl || 'Feed unavailable. Sign in again.'}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Personal Reminder Preferences */}
-      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
-        <CardHeader>
-          <CardTitle className="text-base">Your reminders</CardTitle>
-          <p className="text-xs text-secondary">
-            Leave a time blank to use the household default.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            {[
-              {
-                key: 'digest',
-                label: 'Daily brief',
-                enabled: userDigestEnabled,
-                setEnabled: setUserDigestEnabled,
-              },
-              {
-                key: 'chores',
-                label: 'Chore reminders',
-                enabled: userChoresEnabled,
-                setEnabled: setUserChoresEnabled,
-              },
-              {
-                key: 'bins',
-                label: 'Bin reminders',
-                enabled: userBinsEnabled,
-                setEnabled: setUserBinsEnabled,
-              },
-              {
-                key: 'bills',
-                label: 'Bill reminders',
-                enabled: userBillsEnabled,
-                setEnabled: setUserBillsEnabled,
-              },
-              {
-                key: 'calendar',
-                label: 'Calendar reminders',
-                enabled: userCalendarEnabled,
-                setEnabled: setUserCalendarEnabled,
-              },
-            ].map((item) => (
-              <div key={item.key} className="flex items-center gap-2">
-                <input
-                  id={`pref_${item.key}`}
-                  type="checkbox"
-                  checked={item.enabled}
-                  onChange={(e) => item.setEnabled(e.target.checked)}
-                  className="w-4 h-4 rounded"
-                />
-                <label htmlFor={`pref_${item.key}`} className="text-sm font-medium">
-                  {item.label}
-                </label>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="user_digest_time" className="block text-sm font-medium mb-1">
-                Daily brief time
-              </label>
-              <Input
-                id="user_digest_time"
-                type="time"
-                value={userDigestTime}
-                onChange={(e) => setUserDigestTime(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="user_bins_time" className="block text-sm font-medium mb-1">
-                Bin reminder time
-              </label>
-              <Input
-                id="user_bins_time"
-                type="time"
-                value={userBinsTime}
-                onChange={(e) => setUserBinsTime(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="user_bill_days" className="block text-sm font-medium mb-1">
-                Bill lead days
-              </label>
-              <Input
-                id="user_bill_days"
-                type="number"
-                min="0"
-                max="60"
-                value={userBillDays}
-                onChange={(e) => setUserBillDays(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="user_bill_time" className="block text-sm font-medium mb-1">
-                Bill reminder time
-              </label>
-              <Input
-                id="user_bill_time"
-                type="time"
-                value={userBillTime}
-                onChange={(e) => setUserBillTime(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="user_calendar_minutes" className="block text-sm font-medium mb-1">
-                Calendar lead minutes
-              </label>
-              <Input
-                id="user_calendar_minutes"
-                type="number"
-                min="0"
-                value={userCalendarMinutes}
-                onChange={(e) => setUserCalendarMinutes(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              id="user_quiet"
-              type="checkbox"
-              checked={userQuietEnabled}
-              onChange={(e) => setUserQuietEnabled(e.target.checked)}
-              className="w-4 h-4 rounded"
-            />
-            <label htmlFor="user_quiet" className="text-sm font-medium">
-              Respect quiet hours
-            </label>
-          </div>
-
-          <Button onClick={saveNotificationPrefs} variant="secondary">
-            Save my reminders
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Push Notifications */}
-      <Card className="border-x-0 border-b-0 border-t border-border rounded-none bg-transparent p-0 pt-5">
-        <CardHeader>
-          <CardTitle className="text-base">Device notifications</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-secondary">
-            Enable browser notifications for reminders on this device.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={subscribePush} variant="secondary">
-              Enable notifications on this device
+              Sign out of Chores
             </Button>
-            <Button onClick={sendTestNotification} variant="secondary">
-              Send test notification
-            </Button>
-          </div>
-          {pushStatus && (
-            <p className="text-xs text-secondary mt-1">{pushStatus}</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Account Logout */}
-      <div className="pt-2">
-        <Button onClick={logout} variant="secondary" className="w-full text-destructive border-destructive">
-          Sign out of Chores
-        </Button>
+          </SettingsSection>
       </div>
 
       <Dialog
