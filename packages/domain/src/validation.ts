@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { NAVIGATION_ITEM_IDS } from './navigation';
+
 const altcha = z.string().min(1, 'Complete the verification');
 
 export const registerSchema = z.object({
@@ -20,6 +22,7 @@ export const loginSchema = z.object({
 export const userUpdateSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   notification_prefs: z.record(z.string(), z.unknown()).optional(),
+  navigation_order: z.array(z.enum(NAVIGATION_ITEM_IDS)).min(1).max(32).optional(),
 });
 
 const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);

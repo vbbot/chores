@@ -1,6 +1,7 @@
 import type { User } from '@chores/domain';
 
 import { authAdmin, dbAdmin } from './firebase';
+import { profileFromDoc } from './users';
 import { ApiError } from './http';
 
 export const SESSION_COOKIE = '__session';
@@ -77,9 +78,7 @@ export async function userFromRequest(request: Request): Promise<User> {
 }
 
 export async function userProfile(uid: string): Promise<User | null> {
-  const doc = await dbAdmin().collection('users').doc(uid).get();
-  if (!doc.exists) return null;
-  return { id: doc.id, ...(doc.data() as Omit<User, 'id'>) };
+  return profileFromDoc(await dbAdmin().collection('users').doc(uid).get());
 }
 
 export async function currentHouseholdId(user: User): Promise<string> {

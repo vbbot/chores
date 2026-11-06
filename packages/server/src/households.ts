@@ -1,7 +1,13 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
-import type { Household, ReminderSettings, Room, UserRole } from '@chores/domain';
-import { DEFAULT_REMINDER_SETTINGS } from '@chores/domain';
+import {
+  DEFAULT_REMINDER_SETTINGS,
+  normalizeNavigationOrder,
+  type Household,
+  type ReminderSettings,
+  type Room,
+  type UserRole,
+} from '@chores/domain';
 import type { DocumentSnapshot } from 'firebase-admin/firestore';
 
 import { dbAdmin } from './firebase';
@@ -281,6 +287,7 @@ export async function createUserProfile(input: {
     household_id: input.householdId,
     role: input.role,
     notification_prefs: {},
+    navigation_order: normalizeNavigationOrder(null),
     ical_token: input.icalToken,
     created_at: new Date().toISOString(),
   });

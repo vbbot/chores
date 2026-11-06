@@ -139,7 +139,7 @@ Motion inventory:
 
 - Page enter: 6px upward movement plus fade, 180ms.
 - Mobile tab indicator: 220ms slide.
-- More sheet: 200ms slide and fade.
+- Navigation editor dialog: 160ms fade and scale from 0.98.
 - Dialog: 160ms fade and scale from 0.98.
 - Progress fill: 240ms width transition.
 - Theme change: 160ms colour transition.
@@ -174,9 +174,12 @@ Implementation:
 
 ### Header
 
-- Left: `Chores` wordmark.
+- Left on desktop: `Chores` wordmark.
+- Left on mobile: `Chores` wordmark, except Settings shows `<- Settings` as a back control.
+- Back uses browser history, then falls back to Dashboard.
 - Right: user name on desktop, theme icon, settings cog.
-- Settings is removed from the main navigation.
+- The settings cog is a shortcut. Settings is also a fixed navigation destination.
+- The header is a utility bar, not primary navigation.
 - Sign out lives in Settings only.
 - Theme icon shows the action: moon in light mode, sun in dark mode.
 - Settings icon is a gear, visually distinct from the theme icon.
@@ -187,16 +190,12 @@ Implementation:
 
 ### Desktop Navigation
 
-Items:
-
-- Dashboard
-- Chores
-- Bins
-- Shopping
-- Bills
-- Calendar
-- Notes
-- Progress
+- Docked left rail, 224px, always visible and independently scrollable.
+- Icon plus text label for every item. Never icon-only and never hover-only.
+- All eight destination items appear in the user's saved order.
+- Settings is fixed at the bottom of the rail, separated by a rule and always last.
+- `Customize navigation` sits in the rail footer above Settings.
+- The rail is sticky below the 60px header.
 
 Active item:
 
@@ -207,28 +206,43 @@ Active item:
 
 ### Mobile Navigation
 
-Bottom tabs:
+Bottom tabs, in order:
 
-- Home
-- Chores
-- Bins
-- Shop
-- More
+- The first four destinations from the user's saved order.
+- `All`, always fifth and fixed.
 
-More sheet:
+Tab treatment:
 
-- Bills
-- Calendar
-- Notes
-- Progress
-
-Active tab:
-
+- Icon above a text label, 56px minimum height, safe-area padding.
 - Accent underline.
 - Semibold text.
 - The underline slides between the five equal tab cells.
+- Exactly one tab carries `aria-current="page"`.
 
-Settings is reached from the header cog, not from the More sheet.
+The All page (`/all`) is a real route, not a popup. It groups every destination into `Daily`, `Household`, and `Account`. Each row has an icon, label, and one-line description. The All tab stays active on the All page, on Settings, and on any destination outside the first four.
+
+Settings on mobile:
+
+- Secondary surface, still owned by the All tab.
+- Header becomes `<- Settings`.
+- Back uses browser history, then falls back to Dashboard.
+- Settings section tabs stay horizontal and local to the page.
+
+There is no More sheet. No destination can disappear from navigation.
+
+### Navigation Customization
+
+- One saved order per user, shared by desktop and mobile.
+- Stored as `users/{uid}.navigation_order`: an array of stable destination ids.
+- Default order: `dashboard, chores, bins, shopping, bills, calendar, notes, progress`.
+- The first four saved items become the mobile bottom tabs. The rest remain in All.
+- New destinations merge into an existing saved order in default order; unknown ids are dropped and duplicates removed.
+- Editor entry points: `Customize navigation` in the desktop rail footer, and `Edit navigation` in the All page header.
+- Reorder with pointer drag plus accessible `Move up` and `Move down` controls.
+- A labelled divider after the fourth item marks `Bottom bar` and `More in All`.
+- Settings and All are fixed, shown in the editor, and not reorderable.
+- `Reset to default`, `Cancel`, and `Save` are always available. Changes persist only on Save.
+- The mobile bottom bar always has four primary destinations plus All. It never has fewer.
 
 ## Screen Flow
 

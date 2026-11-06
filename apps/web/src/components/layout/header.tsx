@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { BellIcon, SearchIcon, SettingsIcon } from '@/components/icons';
+import { BellIcon, ChevronLeftIcon, SearchIcon, SettingsIcon } from '@/components/icons';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Dialog } from '@/components/ui/dialog';
 import { apiFetch } from '@/lib/api';
@@ -53,6 +53,16 @@ export function Header() {
   const [searchError, setSearchError] = React.useState<string | null>(null);
   const searchErrorId = React.useId();
   const settingsActive = pathname === '/settings';
+  const isSettingsPage =
+    pathname === '/settings' || pathname.startsWith('/settings/');
+
+  const goBack = () => {
+    if (window.history.length > 1) {
+      router.back();
+    } else {
+      router.push('/dashboard');
+    }
+  };
 
   const notificationsQuery = useApiQuery<Notification[]>(
     queryKeys.notifications,
@@ -146,10 +156,29 @@ export function Header() {
     <header className="sticky top-0 z-40 border-b border-border bg-background px-4 min-h-[60px] flex items-center justify-between">
       <Link
         href="/dashboard"
-        className="text-xl font-semibold tracking-tight min-h-[44px] inline-flex items-center"
+        className="hidden md:inline-flex text-xl font-semibold tracking-tight min-h-[44px] items-center"
       >
         Chores
       </Link>
+
+      {isSettingsPage ? (
+        <button
+          type="button"
+          onClick={goBack}
+          aria-label="Back"
+          className="md:hidden min-h-[44px] inline-flex items-center gap-1 text-sm font-semibold"
+        >
+          <ChevronLeftIcon className="w-5 h-5" />
+          Settings
+        </button>
+      ) : (
+        <Link
+          href="/dashboard"
+          className="md:hidden text-xl font-semibold tracking-tight min-h-[44px] inline-flex items-center"
+        >
+          Chores
+        </Link>
+      )}
 
       <div className="flex items-center gap-1">
         {user && (

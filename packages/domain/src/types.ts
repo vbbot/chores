@@ -1,3 +1,5 @@
+import type { NavigationItemId } from './navigation';
+
 export type UserRole = 'admin' | 'member';
 export type AssignmentMode = 'anyone' | 'fixed' | 'rotate' | 'balanced';
 export type ChoreTaskType = 'recurring' | 'one_off';
@@ -34,6 +36,7 @@ export interface User {
   email: string;
   role: UserRole;
   notification_prefs: NotificationPrefs;
+  navigation_order: NavigationItemId[];
   ical_token: string | null;
   created_at: string;
 }

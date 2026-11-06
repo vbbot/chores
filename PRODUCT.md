@@ -45,6 +45,7 @@ Confirmed capabilities:
 - Household bills, shopping lists, shared notes, and calendar events.
 - A combined daily brief and a notification centre.
 - Personal and household XP, levels, and on-time streaks.
+- Per-user navigation order shared across desktop and mobile, with an All index for every destination.
 
 Confirmed constraints:
 

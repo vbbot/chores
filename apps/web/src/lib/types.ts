@@ -15,6 +15,8 @@ export type {
   HouseholdProgress,
   MemberBalance,
   MemberProgress,
+  NavigationItem,
+  NavigationItemId,
   Note,
   Notification,
   ProgressSummary,
