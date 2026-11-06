@@ -138,6 +138,15 @@ docker login ghcr.io -u vbbot
 
 ```sh
 npm test          # shared domain tests
+npm run e2e       # Firebase Auth + Firestore emulators, local Next server on 3001
+```
+
+`npm run e2e` never touches the production Firebase project. It requires:
+
+- Firebase CLI (`npm install -g firebase-tools`).
+- Java 21 for the Firestore emulator (`brew install openjdk@21` on macOS).
+
+The harness starts the emulators, points the app at them, runs Playwright, and clears emulator data afterward. Direct `playwright test` runs are blocked unless the emulator harness is active.
 make e2e          # builds the stack and runs Playwright
 make verify       # E2E plus domain tests
 ```

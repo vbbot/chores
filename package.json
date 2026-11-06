@@ -12,7 +12,7 @@
     "start": "npm run start -w @chores/web",
     "lint": "npm run lint -w @chores/web",
     "test": "vitest run",
-    "e2e": "npm run test:e2e -w @chores/web"
+    "e2e": "bash scripts/e2e-emulator.sh"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

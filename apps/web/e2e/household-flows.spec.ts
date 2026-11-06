@@ -376,10 +376,14 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   expect(rejectedLogin.status()).toBe(400);
 
   const apiKey = process.env.FIREBASE_WEB_API_KEY;
+  const authEmulator = process.env.FIREBASE_AUTH_EMULATOR_HOST;
   if (apiKey) {
+    if (!authEmulator) {
+      throw new Error('Bearer-token E2E requires the Auth emulator.');
+    }
 
     const signIn = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+      `http://${authEmulator}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

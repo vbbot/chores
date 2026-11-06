@@ -25,6 +25,6 @@ test:
 	npm test
 
 e2e:
-	./scripts/run-e2e-loop.sh
+	npm run e2e
 
 verify: e2e test
