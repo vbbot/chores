@@ -176,7 +176,11 @@ export default function NotesPage() {
                 : null;
 
             return (
-              <div key={note.id} className="border border-border rounded-card p-3">
+              <div
+                key={note.id}
+                id={`note-${note.id}`}
+                className="border border-border rounded-card p-3 scroll-mt-24 target:bg-surface"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="font-semibold text-base flex items-center gap-2">

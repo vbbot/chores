@@ -883,7 +883,8 @@ export default function ChoresPage() {
               return (
                 <div
                   key={template.id}
-                  className="border border-border rounded-card p-3 flex flex-wrap items-start justify-between gap-3"
+                  id={`template-${template.id}`}
+                  className="border border-border rounded-card p-3 flex flex-wrap items-start justify-between gap-3 scroll-mt-24 target:bg-surface"
                 >
                   <div>
                     <h3 className="font-semibold text-base flex items-center gap-2">

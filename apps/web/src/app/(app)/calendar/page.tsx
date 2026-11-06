@@ -222,7 +222,8 @@ export default function CalendarPage() {
         {items.map((event) => (
           <div
             key={event.id}
-            className="border border-border rounded-card p-3 flex items-center justify-between gap-3"
+            id={`event-${event.id}`}
+            className="border border-border rounded-card p-3 flex items-center justify-between gap-3 scroll-mt-24 target:bg-surface"
           >
             <div>
               <h3 className="font-semibold text-base">{event.title}</h3>

@@ -269,7 +269,8 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await searchDialog.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(searchDialog.getByText('Wi-Fi password')).toBeVisible();
   await searchDialog.getByRole('button', { name: /Wi-Fi password/ }).click();
-  await page.waitForURL('**/notes');
+  await page.waitForURL(/\/notes#note-/);
+  await expect(page.locator('[id^="note-"]').first()).toBeVisible();
 
   // 20-21. Settings via the header cog.
   if (project === 'mobile') {

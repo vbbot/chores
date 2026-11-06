@@ -52,7 +52,7 @@ export async function searchHousehold(
         title: template.name,
         subtitle:
           template.task_type === 'one_off' ? 'One-off task' : 'Recurring chore',
-        url: '/chores',
+        url: `/chores#template-${template.id}`,
       }))
   );
 
@@ -63,7 +63,7 @@ export async function searchHousehold(
         id: note.id,
         title: note.title,
         subtitle: note.content.slice(0, 120),
-        url: '/notes',
+        url: `/notes#note-${note.id}`,
       }))
   );
 
@@ -79,7 +79,7 @@ export async function searchHousehold(
         id: bill.id,
         title: bill.name,
         subtitle: bill.provider ?? 'Household bill',
-        url: '/bills',
+        url: `/bills#bill-${bill.id}`,
       }))
   );
 
@@ -92,7 +92,7 @@ export async function searchHousehold(
         id: event.id,
         title: event.title,
         subtitle: event.description ?? 'Calendar event',
-        url: '/calendar',
+        url: `/calendar#event-${event.id}`,
       }))
   );
 
@@ -107,7 +107,7 @@ export async function searchHousehold(
           id: item.id,
           title: name,
           subtitle: 'Shopping item',
-          url: '/shopping',
+          url: `/shopping#item-${item.id}`,
         });
       }
     }

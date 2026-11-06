@@ -39,7 +39,10 @@ function BillRow({
     : null;
 
   return (
-    <div className="border border-border rounded-card p-3">
+    <div
+      id={`bill-${bill.id}`}
+      className="border border-border rounded-card p-3 scroll-mt-24 target:bg-surface"
+    >
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2">
         <div className="min-w-0">
           <h3 className="font-semibold text-base leading-snug break-words">

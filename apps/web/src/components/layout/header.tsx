@@ -83,6 +83,19 @@ export function Header() {
     router.push(url);
   };
 
+  const openSearchResult = (url: string) => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    setSearchResults(null);
+    const hash = url.split('#')[1];
+    router.push(url);
+    if (hash) {
+      window.setTimeout(() => {
+        document.getElementById(hash)?.scrollIntoView({ block: 'center' });
+      }, 120);
+    }
+  };
+
   const markAllRead = async () => {
     try {
       await apiFetch('/api/v1/notifications/read-all', { method: 'POST' });
@@ -117,14 +130,6 @@ export function Header() {
   const runSearch = (event: React.FormEvent) => {
     event.preventDefault();
     void executeSearch();
-  };
-
-  const openResult = (url: string) => {
-    setSearchOpen(false);
-    setSearchQuery('');
-    setSearchResults(null);
-    setSearchError(null);
-    router.push(url);
   };
 
   const resultGroups: { label: string; items: SearchHit[] }[] = searchResults
@@ -254,7 +259,7 @@ export function Header() {
                   <button
                     key={`${group.label}-${item.id}`}
                     type="button"
-                    onClick={() => openResult(item.url)}
+                    onClick={() => openSearchResult(item.url)}
                     className="w-full text-left p-3 border border-border rounded-card hover:bg-surface transition-colors"
                   >
                     <p className="text-sm font-semibold">{item.title}</p>

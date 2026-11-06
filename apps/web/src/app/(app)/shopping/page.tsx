@@ -24,7 +24,10 @@ function ItemRow({
   onDelete: (id: string) => void;
 }) {
   return (
-    <div className="p-3 border border-border rounded-card bg-background flex items-center justify-between gap-3">
+    <div
+      id={`item-${item.id}`}
+      className="p-3 border border-border rounded-card bg-background flex items-center justify-between gap-3 scroll-mt-24 target:bg-surface"
+    >
       <div className="flex items-center gap-3">
         <input
           type="checkbox"
