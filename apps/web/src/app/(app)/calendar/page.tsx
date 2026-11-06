@@ -36,9 +36,20 @@ function localInputValue(value: string): string {
   return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
 }
 
+function groupByDate(events: CalendarEvent[]): Array<[string, CalendarEvent[]]> {
+  const groups = new Map<string, CalendarEvent[]>();
+  [...events]
+    .sort((a, b) => a.start_time.localeCompare(b.start_time))
+    .forEach((event) => {
+      const date = londonDateString(new Date(event.start_time));
+      groups.set(date, [...(groups.get(date) ?? []), event]);
+    });
+  return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+}
+
 export default function CalendarPage() {
   const queryClient = useQueryClient();
-  const { data, isLoading, error } = useApiQuery<CalendarEvent[]>(
+  const { data, isLoading, error, refetch } = useApiQuery<CalendarEvent[]>(
     queryKeys.calendar,
     '/api/v1/calendar/events'
   );
@@ -51,16 +62,20 @@ export default function CalendarPage() {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [title, setTitle] = React.useState('');
   const [startTime, setStartTime] = React.useState('');
+  const [eventDate, setEventDate] = React.useState('');
   const [endTime, setEndTime] = React.useState('');
   const [allDay, setAllDay] = React.useState(false);
   const [assignedTo, setAssignedTo] = React.useState('');
   const [reminderMinutes, setReminderMinutes] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  const [showPast, setShowPast] = React.useState(false);
+  const todayHeadingRef = React.useRef<HTMLHeadingElement | null>(null);
 
   const resetForm = () => {
     setEditingId(null);
     setTitle('');
     setStartTime('');
+    setEventDate('');
     setEndTime('');
     setAllDay(false);
     setAssignedTo('');
@@ -77,6 +92,7 @@ export default function CalendarPage() {
     setEditingId(event.id);
     setTitle(event.title);
     setStartTime(localInputValue(event.start_time));
+    setEventDate(londonDateString(new Date(event.start_time)));
     setEndTime(event.end_time ? localInputValue(event.end_time) : '');
     setAllDay(event.all_day);
     setAssignedTo(event.assigned_to ?? '');
@@ -90,9 +106,19 @@ export default function CalendarPage() {
     setDialogOpen(true);
   };
 
+  const handleAllDayChange = (checked: boolean) => {
+    setAllDay(checked);
+    if (checked) {
+      if (startTime) setEventDate(startTime.slice(0, 10));
+      setEndTime('');
+    } else if (!startTime && eventDate) {
+      setStartTime(`${eventDate}T09:00`);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !startTime) return;
+    if (!title.trim() || (allDay ? !eventDate : !startTime)) return;
     setSubmitting(true);
     setFormError(null);
     try {
@@ -104,8 +130,10 @@ export default function CalendarPage() {
           method: editingId ? 'PUT' : 'POST',
           body: JSON.stringify({
             title: title.trim(),
-            start_time: londonWallTimeToIso(startTime),
-            end_time: endTime ? londonWallTimeToIso(endTime) : null,
+            start_time: allDay
+              ? londonWallTimeToIso(`${eventDate}T00:00`)
+              : londonWallTimeToIso(startTime),
+            end_time: allDay || !endTime ? null : londonWallTimeToIso(endTime),
             all_day: allDay,
             assigned_to: assignedTo || null,
             reminder_minutes_before:
@@ -150,18 +178,89 @@ export default function CalendarPage() {
       <div className="space-y-4">
         <h1 className="text-3xl font-semibold tracking-tight">Shared calendar</h1>
         <div role="alert" className="p-4 border border-destructive text-destructive rounded-card text-sm">
-          {error instanceof Error ? error.message : 'Could not load events.'}
+          <p>{error instanceof Error ? error.message : 'Could not load events.'}</p>
+          <Button variant="secondary" onClick={() => void refetch()} className="mt-3">
+            Try again
+          </Button>
         </div>
       </div>
     );
   }
 
   const today = londonDateString();
-  const groups = new Map<string, CalendarEvent[]>();
-  events.forEach((event) => {
-    const date = londonDateString(new Date(event.start_time));
-    groups.set(date, [...(groups.get(date) ?? []), event]);
-  });
+  const upcomingEvents = events.filter(
+    (event) => londonDateString(new Date(event.start_time)) >= today
+  );
+  const pastEvents = events.filter(
+    (event) => londonDateString(new Date(event.start_time)) < today
+  );
+  const upcomingGroups = groupByDate(upcomingEvents);
+  const pastGroups = groupByDate(pastEvents);
+  const hasToday = upcomingGroups.some(([date]) => date === today);
+
+  const jumpToToday = () => {
+    const heading = todayHeadingRef.current;
+    if (!heading) return;
+    heading.focus({ preventScroll: true });
+    heading.scrollIntoView({ block: 'start' });
+  };
+
+  const renderDayGroup = (date: string, items: CalendarEvent[]) => {
+    const isToday = date === today;
+    return (
+      <section key={date} className="space-y-2">
+        <h2
+          ref={isToday ? todayHeadingRef : undefined}
+          tabIndex={isToday ? -1 : undefined}
+          className={`text-sm font-semibold border-b border-border pb-2 ${
+            isToday ? 'text-accent' : 'text-foreground'
+          }`}
+        >
+          {isToday ? 'Today, ' : ''}
+          {formatUkDate(date)}
+        </h2>
+        {items.map((event) => (
+          <div
+            key={event.id}
+            className="border border-border rounded-card p-3 flex items-center justify-between gap-3"
+          >
+            <div>
+              <h3 className="font-semibold text-base">{event.title}</h3>
+              <p className="text-xs text-secondary mt-0.5">
+                {event.all_day
+                  ? 'All day'
+                  : `${timeLabel(event.start_time)}${
+                      event.end_time ? ` - ${timeLabel(event.end_time)}` : ''
+                    }`}
+                {event.assigned_to
+                  ? ` • ${
+                      members.find((member) => member.id === event.assigned_to)
+                        ?.name ?? 'Assigned'
+                    }`
+                  : ''}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => openEditDialog(event)}
+                aria-label={`Edit ${event.title}`}
+                className="text-xs text-secondary hover:text-foreground min-h-[44px] min-w-[44px] px-1"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => deleteEvent(event.id)}
+                aria-label={`Remove ${event.title}`}
+                className="text-xs text-secondary hover:text-destructive min-h-[44px] min-w-[44px] px-1"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+      </section>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -179,74 +278,64 @@ export default function CalendarPage() {
           >
             iCal feed
           </Link>
+          {hasToday && (
+            <button
+              type="button"
+              onClick={jumpToToday}
+              className="text-sm text-secondary underline hover:text-foreground min-h-[44px] inline-flex items-center"
+            >
+              Today
+            </button>
+          )}
           <Button onClick={openCreateDialog}>Add event</Button>
         </div>
       </div>
 
       {(actionError || error) && (
-        <div role="alert" className="p-3 text-sm rounded-card border border-destructive text-destructive">
-          {actionError ?? (error instanceof Error ? error.message : 'Could not load events.')}
+        <div
+          role="alert"
+          className="p-3 text-sm rounded-card border border-destructive text-destructive flex flex-wrap items-center justify-between gap-3"
+        >
+          <span>
+            {actionError ?? (error instanceof Error ? error.message : 'Could not load events.')}
+          </span>
+          {!actionError && error && (
+            <Button variant="secondary" onClick={() => void refetch()}>
+              Try again
+            </Button>
+          )}
         </div>
       )}
 
-      {events.length === 0 ? (
+      {upcomingGroups.length === 0 ? (
         <EmptyState
-          title="No upcoming events"
-          description="Schedule plumber visits, boiler services, holidays, or shared commitments."
+          title="Nothing coming up"
+          description="Add a household event so visits, services, and shared plans appear here."
           actionLabel="Add household event"
           onAction={openCreateDialog}
         />
       ) : (
         <div className="space-y-7">
-          {Array.from(groups.entries()).map(([date, items]) => (
-            <section key={date} className="space-y-2">
-              <h2
-                className={`text-sm font-semibold border-b border-border pb-2 ${
-                  date === today ? 'text-accent' : 'text-foreground'
-                }`}
-              >
-                {date === today ? 'Today, ' : ''}
-                {formatUkDate(date)}
-              </h2>
-              {items.map((event) => (
-                <div
-                  key={event.id}
-                  className="border border-border rounded-card p-3 flex items-center justify-between gap-3"
-                >
-                  <div>
-                    <h3 className="font-semibold text-base">{event.title}</h3>
-                    <p className="text-xs text-secondary mt-0.5">
-                      {event.all_day
-                        ? 'All day'
-                        : `${timeLabel(event.start_time)}${
-                            event.end_time ? ` - ${timeLabel(event.end_time)}` : ''
-                          }`}
-                      {event.assigned_to
-                        ? ` • ${
-                            members.find((member) => member.id === event.assigned_to)
-                              ?.name ?? 'Assigned'
-                          }`
-                        : ''}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => openEditDialog(event)}
-                      className="text-xs text-secondary hover:text-foreground min-h-[44px] px-1"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => deleteEvent(event.id)}
-                      className="text-xs text-secondary hover:text-destructive min-h-[44px] px-1"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </section>
-          ))}
+          {upcomingGroups.map(([date, items]) => renderDayGroup(date, items))}
+        </div>
+      )}
+
+      {pastEvents.length > 0 && (
+        <div className="space-y-4">
+          <button
+            type="button"
+            aria-expanded={showPast}
+            aria-controls="past-events"
+            onClick={() => setShowPast((value) => !value)}
+            className="text-sm text-secondary underline hover:text-foreground min-h-[44px] inline-flex items-center"
+          >
+            {showPast ? 'Hide past events' : `Past events (${pastEvents.length})`}
+          </button>
+          {showPast && (
+            <div id="past-events" className="space-y-7">
+              {pastGroups.map(([date, items]) => renderDayGroup(date, items))}
+            </div>
+          )}
         </div>
       )}
 
@@ -277,44 +366,60 @@ export default function CalendarPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor="ev_start" className="block text-sm font-medium mb-1">
-                Starts
-              </label>
-              <Input
-                id="ev_start"
-                type="datetime-local"
-                required
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-            </div>
-            <div>
-              <label htmlFor="ev_end" className="block text-sm font-medium mb-1">
-                Ends (optional)
-              </label>
-              <Input
-                id="ev_end"
-                type="datetime-local"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
+          <label
+            htmlFor="ev_all_day"
+            className="flex items-center gap-2 min-h-[44px] text-sm font-medium cursor-pointer"
+          >
             <input
               id="ev_all_day"
               type="checkbox"
               checked={allDay}
-              onChange={(e) => setAllDay(e.target.checked)}
+              onChange={(e) => handleAllDayChange(e.target.checked)}
               className="w-4 h-4 rounded"
             />
-            <label htmlFor="ev_all_day" className="text-sm font-medium">
-              All day
-            </label>
-          </div>
+            All day
+          </label>
+
+          {allDay ? (
+            <div>
+              <label htmlFor="ev_date" className="block text-sm font-medium mb-1">
+                Date
+              </label>
+              <Input
+                id="ev_date"
+                type="date"
+                required
+                value={eventDate}
+                onChange={(e) => setEventDate(e.target.value)}
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="ev_start" className="block text-sm font-medium mb-1">
+                  Starts
+                </label>
+                <Input
+                  id="ev_start"
+                  type="datetime-local"
+                  required
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="ev_end" className="block text-sm font-medium mb-1">
+                  Ends (optional)
+                </label>
+                <Input
+                  id="ev_end"
+                  type="datetime-local"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
 
           <div>
             <label htmlFor="ev_assigned" className="block text-sm font-medium mb-1">

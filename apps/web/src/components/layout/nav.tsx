@@ -28,12 +28,20 @@ const desktopNav = [
   ...moreNav,
 ];
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function Nav() {
   const pathname = usePathname();
   const queryClient = useQueryClient();
   const [moreOpen, setMoreOpen] = React.useState(false);
   const moreButtonRef = React.useRef<HTMLButtonElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
+
+  const closeMore = React.useCallback((restoreFocus = true) => {
+    setMoreOpen(false);
+    if (restoreFocus) moreButtonRef.current?.focus();
+  }, []);
 
   React.useEffect(() => {
     setMoreOpen(false);
@@ -44,8 +52,38 @@ export function Nav() {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setMoreOpen(false);
-        moreButtonRef.current?.focus();
+        closeMore();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const panel = panelRef.current;
+      if (!panel || panel.offsetParent === null) return;
+
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (element) => element.offsetParent !== null
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (!panel.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
 
@@ -54,7 +92,9 @@ export function Nav() {
       if (panelRef.current?.contains(target) || moreButtonRef.current?.contains(target)) {
         return;
       }
-      setMoreOpen(false);
+      const focusWasInside = panelRef.current?.contains(document.activeElement);
+      closeMore(false);
+      if (focusWasInside) moreButtonRef.current?.focus();
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -65,7 +105,7 @@ export function Nav() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('mousedown', handlePointerDown);
     };
-  }, [moreOpen]);
+  }, [moreOpen, closeMore]);
 
   const prefetch = (href: string) => {
     const today = londonDateString();
@@ -152,7 +192,9 @@ export function Nav() {
           ref={panelRef}
           id="more-sections"
           role="dialog"
+          aria-modal="true"
           aria-label="More sections"
+          tabIndex={-1}
           className="sheet-enter md:hidden fixed bottom-16 left-0 right-0 z-50 border-t border-border bg-background p-4"
         >
           <div className="grid grid-cols-2 gap-2">
@@ -199,7 +241,13 @@ export function Nav() {
         <button
           ref={moreButtonRef}
           type="button"
-          onClick={() => setMoreOpen((open) => !open)}
+          onClick={() => {
+            if (moreOpen) {
+              closeMore();
+            } else {
+              setMoreOpen(true);
+            }
+          }}
           aria-expanded={moreOpen}
           aria-controls="more-sections"
           className={cn(

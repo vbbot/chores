@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { ProgressWidget } from '@/components/progress/progress-widget';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,7 @@ interface CompletionResponse {
 
 export default function DashboardPage() {
   const today = londonDateString();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const choresQuery = useApiQuery<ChoreInstance[]>(
@@ -226,7 +228,7 @@ export default function DashboardPage() {
             title="All clear for today"
             description="No pending chores scheduled for today."
             actionLabel="Add a chore"
-            onAction={() => (window.location.href = '/chores')}
+            onAction={() => router.push('/chores')}
           />
         ) : (
           <div className="space-y-6">

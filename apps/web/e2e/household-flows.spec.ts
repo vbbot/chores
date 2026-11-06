@@ -89,7 +89,7 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
     .filter({ has: page.getByRole('heading', { name: 'Mop kitchen floor', exact: true }) })
     .first();
   await expect(choreInstance).toBeVisible();
-  await expect(choreInstance.getByText('Assigned to You')).toBeVisible();
+  await expect(choreInstance.getByText('Assigned to you')).toBeVisible();
 
   await choreInstance.getByRole('button', { name: 'Assign' }).click();
   const assignDialog = page.getByRole('dialog', { name: 'Assign this chore' });
@@ -102,7 +102,7 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
     .getByRole('dialog', { name: 'Assign this chore' })
     .getByRole('button', { name: 'E2E Housemate' })
     .click();
-  await expect(choreInstance.getByText('Assigned to You')).toBeVisible();
+  await expect(choreInstance.getByText('Assigned to you')).toBeVisible();
   await expect(choreInstance.getByRole('button', { name: 'Mark done' })).toBeEnabled();
   await shot(page, project, '09-chores-populated');
   await choreInstance.getByRole('button', { name: 'Mark done' }).click();
@@ -222,9 +222,9 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await page.getByRole('button', { name: 'Save bill' }).click();
   await expect(page.getByRole('heading', { name: 'Council Tax' })).toBeVisible();
   await shot(page, project, '15-bills-populated');
-  await page.getByRole('button', { name: 'Mark paid' }).click();
+  await page.getByRole('button', { name: /^Mark .* as paid$/ }).click();
   await expect(page.getByText('15 Feb 2030')).toBeVisible();
-  await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
+  await page.getByRole('button', { name: /^Edit / }).first().click();
   await page.fill('#bill_amount', '90.00');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('£90.00')).toBeVisible();
@@ -239,7 +239,7 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await page.fill('#ev_start', '2030-02-20T10:00');
   await page.getByRole('button', { name: 'Save event' }).click();
   await expect(page.getByRole('heading', { name: 'Boiler service' })).toBeVisible();
-  await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
+  await page.getByRole('button', { name: /^Edit / }).first().click();
   await page.fill('#ev_title', 'Boiler service and flush');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(
@@ -299,7 +299,7 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   expect(binsFeedResponse.status()).toBe(200);
   expect(await binsFeedResponse.text()).toContain('Put out bins');
   await expect(page.getByText('Members (1)')).toBeVisible();
-  await expect(page.getByText('Appearance')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
 
   const addRoomButton = page.getByRole('button', { name: 'Add room' }).first();
   await addRoomButton.click();
@@ -310,12 +310,9 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
 
   await page.fill('#digest_time', '08:15');
   await page.fill('#bins_time', '20:00');
-  await page.getByRole('button', { name: 'Save household reminders' }).click();
-  await expect(page.getByText('Household reminder defaults saved.')).toBeVisible();
-
   await page.fill('#user_digest_time', '08:30');
-  await page.getByRole('button', { name: 'Save my reminders' }).click();
-  await expect(page.getByText('Your reminder preferences saved.')).toBeVisible();
+  await page.getByRole('button', { name: 'Save reminders' }).click();
+  await expect(page.getByText('Reminders saved.')).toBeVisible();
 
   await page.getByRole('button', { name: 'Send test notification' }).click();
   await expect(
@@ -453,7 +450,7 @@ test('two-member distribution: fixed, balanced, and rotation', async ({
     .locator('div.rounded-card')
     .filter({ has: pageB.getByRole('heading', { name: 'Return parcel', exact: true }) })
     .first();
-  await expect(partnerTask.getByText('Assigned to You')).toBeVisible();
+  await expect(partnerTask.getByText('Assigned to you')).toBeVisible();
   await partnerTask.getByRole('button', { name: 'Mark done' }).click();
   await expect(pageB.getByRole('status')).toContainText('XP');
 

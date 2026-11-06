@@ -381,6 +381,15 @@ Suggestions:
 - `Not now` dismisses for 30 days.
 - No AI badge, sparkle icon, or chat box.
 
+#### Composer
+
+- The add/edit dialog is split into `What`, `When`, and `Who`.
+- End date and reminder controls sit under `More options`.
+- Save and Cancel stay in a sticky footer.
+- Unassigned rows offer a direct `Claim`.
+- Auto-balance shows the next likely member and their current weekly load.
+- Priority is not shown because it does not affect ordering or visibility.
+
 #### Scheduling
 
 Recurring chores support:
@@ -445,9 +454,12 @@ A 15-minute cron runs the reminder engine. Delivery records are keyed by entity,
 
 ### Bills
 
-- Groups: `Due soon`, `Later`, `No date`.
+- Groups: `Overdue`, `Due today`, `Next 7 days`, `Later`, `No date`.
+- Sort ascending within each group.
+- Overdue rows show `X days overdue` in destructive text.
+- Summary states the total due today through the next seven days.
 - Quiet sections with 1px rows.
-- Amount right aligned with tabular figures.
+- Amount stays in a fixed right column with tabular figures at every breakpoint.
 - Mark paid is a secondary button.
 - Edit is available for amount, provider, frequency, due date, payment method, reference, notes, and reminder timing.
 - Delete is a text action with confirmation.
@@ -458,8 +470,10 @@ A 15-minute cron runs the reminder engine. Delivery records are keyed by entity,
 - Today's date label uses accent.
 - Event rows use 1px borders.
 - No fake month grid until the data justifies it.
+- Upcoming events are shown by default. Past events sit behind a disclosure.
 - Add and edit event use one dialog.
 - Supports end time, all-day, assigned member, and reminder lead minutes.
+- All-day events use a date-only control and hide the end time.
 - Creating an event notifies the other household members.
 - If the event is assigned to one person, only that person is notified.
 - Events also produce a reminder before they start.
@@ -469,6 +483,7 @@ A 15-minute cron runs the reminder engine. Delivery records are keyed by entity,
 - Pinned notes first.
 - `Pinned` is small accent text, not a pill.
 - Each note shows who added it, the creation date and time, and the last updated date and time when edited.
+- Note content is plain text, not a bordered field.
 - Add and edit share one dialog.
 - Copy content action.
 - Delete confirmation.
@@ -489,7 +504,7 @@ Uses quiet sections with 1px dividers. No 2px card grid. Workload balance is inf
 
 ### Notification centre
 
-- Bell in the header with an unread count.
+- Bell in the header with an unread count in its accessible name.
 - Lists chore, bin, bill, calendar, assignment, and test notifications.
 - Selecting a notification marks it read and opens its screen.
 - Mark all read is available.
@@ -542,6 +557,10 @@ Appearance:
 - Auto, Light, Dark.
 - Active option uses accent border and surface.
 - Auto follows the device theme.
+- Appearance comes first.
+- Desktop uses a sticky section rail. Mobile sections collapse.
+- Reminder defaults and personal overrides share one table. One save action covers both.
+- Account shows the signed-in email and role before sign out.
 
 ## Components
 
@@ -590,6 +609,7 @@ Empty states:
 - Explain the cause.
 - One next action.
 - No illustration.
+- 1px solid border. No dashed border.
 
 Loading states:
 

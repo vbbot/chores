@@ -169,8 +169,10 @@ export default function NotesPage() {
             const created = noteDate(note.created_at);
             const updated = noteDate(note.updated_at);
             const edited =
-              note.updated_at && note.updated_at !== note.created_at
-                ? updated
+              note.updated_at !== note.created_at
+                ? updated && updated !== created
+                  ? `Updated ${updated}`
+                  : 'Updated'
                 : null;
 
             return (
@@ -185,7 +187,7 @@ export default function NotesPage() {
                     </h3>
                     <p className="text-xs text-secondary mt-1">
                       Added by {author} on {created ?? 'an unknown date'}
-                      {edited ? ` • Updated ${edited}` : ''}
+                      {edited ? ` • ${edited}` : ''}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -210,9 +212,7 @@ export default function NotesPage() {
                   </div>
                 </div>
                 {note.content && (
-                  <p className="mt-2 whitespace-pre-wrap text-sm p-2 bg-surface rounded-card border border-border">
-                    {note.content}
-                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm">{note.content}</p>
                 )}
               </div>
             );
