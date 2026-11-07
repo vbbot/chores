@@ -184,3 +184,21 @@ export function GripIcon(props: SVGProps<SVGSVGElement>) {
     </IconBase>
   );
 }
+
+export function MealsIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconBase {...props}>
+      <path d="M7 3v8M4 3v5a3 3 0 0 0 6 0V3M7 11v10" />
+      <path d="M17 3c-2 2-2 6 0 8v10M17 3v8" />
+    </IconBase>
+  );
+}
+
+export function HealthIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 11c0 5.5-7 10-7 10Z" />
+      <path d="M8 12h2l1.5-3 2 5L15 12h2" />
+    </IconBase>
+  );
+}

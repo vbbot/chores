@@ -20,5 +20,12 @@ export const queryKeys = {
   shopping: ['shopping'] as const,
   calendar: ['calendar'] as const,
   notes: ['notes'] as const,
+  meals: {
+    ideas: ['meals', 'ideas'] as const,
+    plan: (from: string, to: string) => ['meals', 'plan', from, to] as const,
+    recipes: (query: string) => ['meals', 'recipes', query] as const,
+    recipe: (source: string, id: string) => ['meals', 'recipe', source, id] as const,
+  },
+  health: ['health'] as const,
   notifications: ['notifications'] as const,
 };

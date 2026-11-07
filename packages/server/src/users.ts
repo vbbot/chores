@@ -24,6 +24,7 @@ export async function listMembers(householdId: string): Promise<User[]> {
   return result.docs
     .map((doc) => profileFromDoc(doc))
     .filter((user): user is User => user !== null)
+    .map(({ health_consent_at: _consent, ...user }) => user as User)
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

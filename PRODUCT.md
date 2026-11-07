@@ -46,6 +46,8 @@ Confirmed capabilities:
 - A combined daily brief and a notification centre.
 - Personal and household XP, levels, and on-time streaks.
 - Per-user navigation order shared across desktop and mobile, with an All index for every destination.
+- Shared meal ideas, a weekly meal plan, local recipe search, recipe import, nutrition estimates, and shopping-list integration.
+- A private per-user health diary with consent, export, and delete.
 
 Confirmed constraints:
 

@@ -192,7 +192,7 @@ Implementation:
 
 - Docked left rail, 224px, always visible and independently scrollable.
 - Icon plus text label for every item. Never icon-only and never hover-only.
-- All eight destination items appear in the user's saved order.
+- All ten destination items appear in the user's saved order.
 - Settings is fixed at the bottom of the rail, separated by a rule and always last.
 - `Customize navigation` sits in the rail footer above Settings.
 - The rail is sticky below the 60px header.
@@ -219,7 +219,7 @@ Tab treatment:
 - The underline slides between the five equal tab cells.
 - Exactly one tab carries `aria-current="page"`.
 
-The All page (`/all`) is a real route, not a popup. It groups every destination into `Daily`, `Household`, and `Account`. Each row has an icon, label, and one-line description. The All tab stays active on the All page, on Settings, and on any destination outside the first four.
+The All page (`/all`) is a real route, not a popup. It groups every destination into `Daily`, `Household`, `Personal`, and `Account`. Each row has an icon, label, and one-line description. The All tab stays active on the All page, on Settings, and on any destination outside the first four.
 
 Settings on mobile:
 
@@ -234,7 +234,7 @@ There is no More sheet. No destination can disappear from navigation.
 
 - One saved order per user, shared by desktop and mobile.
 - Stored as `users/{uid}.navigation_order`: an array of stable destination ids.
-- Default order: `dashboard, chores, bins, shopping, bills, calendar, notes, progress`.
+- Default order: `dashboard, chores, bins, shopping, meals, bills, calendar, notes, progress, health`.
 - The first four saved items become the mobile bottom tabs. The rest remain in All.
 - New destinations merge into an existing saved order in default order; unknown ids are dropped and duplicates removed.
 - Editor entry points: `Customize navigation` in the desktop rail footer, and `Edit navigation` in the All page header.
@@ -243,6 +243,29 @@ There is no More sheet. No destination can disappear from navigation.
 - Settings and All are fixed, shown in the editor, and not reorderable.
 - `Reset to default`, `Cancel`, and `Save` are always available. Changes persist only on Save.
 - The mobile bottom bar always has four primary destinations plus All. It never has fewer.
+
+### Meals
+
+- Destination: `/meals`, grouped under Daily.
+- Three tabs: Ideas, Plan, Recipes.
+- Ideas are shared household suggestions with votes and the suggester's name.
+- Plan is a Monday-to-Sunday grid with breakfast, lunch, dinner, and snack slots.
+- A planned meal can link a catalogue or household recipe; free-text meals are allowed but cannot add ingredients to shopping.
+- Recipe search uses the local SQLite FTS5 catalogue. Household recipes are merged into results.
+- Recipe detail shows ingredients, method, tags, source attribution, and per-serving nutrition with a confidence label.
+- `Add to shopping` scales ingredients to planned servings, merges matching unchecked items, and confirms before writing.
+- Nutrition is an estimate, never a medical claim. Missing matches are shown honestly.
+
+### Private Health Diary
+
+- Destination: `/health`, grouped under Personal.
+- Private to the signed-in user. Never shown to the household, admins, or the All index.
+- Consent gate before the first entry.
+- Entry fields: date, time, symptoms, severity, duration, energy, notes.
+- Timeline supports edit and delete.
+- Export and delete-all are always available.
+- No diagnosis, causation, or treatment language.
+- Excluded from household export.
 
 ## Screen Flow
 

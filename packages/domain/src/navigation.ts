@@ -3,15 +3,17 @@ export const NAVIGATION_ITEM_IDS = [
   'chores',
   'bins',
   'shopping',
+  'meals',
   'bills',
   'calendar',
   'notes',
   'progress',
+  'health',
 ] as const;
 
 export type NavigationItemId = (typeof NAVIGATION_ITEM_IDS)[number];
 
-export type NavigationGroup = 'daily' | 'household';
+export type NavigationGroup = 'daily' | 'household' | 'personal';
 
 export interface NavigationItem {
   id: NavigationItemId;
@@ -51,6 +53,13 @@ const navigationDefinitions: Record<NavigationItemId, Omit<NavigationItem, 'id'>
     group: 'daily',
     description: 'Shared shopping list',
   },
+  meals: {
+    label: 'Meals',
+    shortLabel: 'Meals',
+    href: '/meals',
+    group: 'daily',
+    description: 'Meal ideas, weekly plan, and recipes',
+  },
   bills: {
     label: 'Bills',
     shortLabel: 'Bills',
@@ -79,6 +88,13 @@ const navigationDefinitions: Record<NavigationItemId, Omit<NavigationItem, 'id'>
     group: 'household',
     description: 'Levels, streaks, and workload',
   },
+  health: {
+    label: 'Health',
+    shortLabel: 'Health',
+    href: '/health',
+    group: 'personal',
+    description: 'Private symptom diary',
+  },
 };
 
 export const NAVIGATION_ITEMS: readonly NavigationItem[] = NAVIGATION_ITEM_IDS.map(
@@ -92,6 +108,7 @@ export const NAVIGATION_GROUPS: readonly {
 }[] = [
   { id: 'daily', label: 'Daily', description: 'The work that comes round most often' },
   { id: 'household', label: 'Household', description: 'Money, plans, notes, and progress' },
+  { id: 'personal', label: 'Personal', description: 'Private to you' },
 ];
 
 /** Number of leading items that become mobile bottom tabs. */

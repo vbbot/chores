@@ -36,3 +36,6 @@ firebase-debug.log
 ## Firebase emulator logs
 firestore-debug.log
 ui-debug.log
+
+# Local recipe index
+data/

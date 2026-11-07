@@ -12,9 +12,12 @@
     "start": "npm run start -w @chores/web",
     "lint": "npm run lint -w @chores/web",
     "test": "vitest run",
+    "food:import-recipes": "tsx packages/food-data/src/import-cli.ts",
     "e2e": "bash scripts/e2e-emulator.sh"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.6.3",
     "vitest": "^3.2.4"
   }
