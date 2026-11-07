@@ -240,6 +240,7 @@ export default function DashboardPage() {
               <p className="mt-0.5 text-xs text-secondary">
                 {mainMeal.servings} {mainMeal.servings === 1 ? 'serving' : 'servings'}
                 {mainMeal.cook_name ? ` • ${mainMeal.cook_name}` : ''}
+                {mainMeal.serve_time ? ` • Served at ${mainMeal.serve_time.slice(0, 5)}` : ''}
                 {mainMeal.recipe_source !== 'free_text' && mainMeal.recipe_id
                   ? ` • ${mainMeal.recipe_source === 'household' ? 'Household recipe' : 'Catalogue recipe'}`
                   : ''}

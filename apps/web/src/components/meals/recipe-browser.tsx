@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { useApiQuery } from '@/lib/query';
 import { queryKeys } from '@/lib/query-keys';
 import { Recipe } from '@/lib/types';
+import { AddToShoppingDialog, ShoppingTarget } from './add-to-shopping-dialog';
+import { MealAction, MealActionDialog, RecipeTarget } from './meal-action-dialog';
 import { RecipeImportDialog } from './recipe-import-dialog';
 
 const TIME_OPTIONS: { value: string; label: string }[] = [
@@ -29,11 +31,24 @@ function timeLabel(recipe: Recipe): string | null {
   return null;
 }
 
+function toTarget(recipe: Recipe): RecipeTarget {
+  return {
+    source: recipe.source,
+    id: recipe.id,
+    title: recipe.title,
+    servings: recipe.servings,
+  };
+}
+
 export default function RecipeBrowser() {
   const [term, setTerm] = React.useState('');
   const [query, setQuery] = React.useState('');
   const [maxTime, setMaxTime] = React.useState('');
   const [importOpen, setImportOpen] = React.useState(false);
+  const [action, setAction] = React.useState<{ kind: MealAction; target: RecipeTarget } | null>(
+    null
+  );
+  const [shoppingTarget, setShoppingTarget] = React.useState<ShoppingTarget | null>(null);
 
   const params = new URLSearchParams();
   if (query) params.set('q', query);
@@ -134,39 +149,82 @@ export default function RecipeBrowser() {
             const preview = recipe.ingredients.slice(0, 3);
 
             return (
-              <Link
-                key={`${recipe.source}-${recipe.id}`}
-                href={`/meals/recipes/${recipe.id}?source=${recipe.source}`}
-                className="block"
-              >
-                <Card className="h-full transition-colors hover:bg-surface">
-                  <div className="flex items-start justify-between gap-2">
-                    <h2 className="text-base font-semibold leading-snug">{recipe.title}</h2>
-                    <span className="shrink-0 rounded-card border border-border px-2 py-0.5 text-xs font-semibold text-secondary">
-                      {recipe.source === 'household' ? 'Household' : 'Catalogue'}
-                    </span>
-                  </div>
+              <Card key={`${recipe.source}-${recipe.id}`} className="flex h-full flex-col">
+                <div className="flex items-start justify-between gap-2">
+                  <h2 className="text-base font-semibold leading-snug">
+                    <Link
+                      href={`/meals/recipes/${recipe.id}?source=${recipe.source}`}
+                      className="hover:underline"
+                    >
+                      {recipe.title}
+                    </Link>
+                  </h2>
+                  <span className="shrink-0 rounded-card border border-border px-2 py-0.5 text-xs font-semibold text-secondary">
+                    {recipe.source === 'household' ? 'Household' : 'Catalogue'}
+                  </span>
+                </div>
 
-                  <p className="mt-2 text-xs text-secondary">
-                    {[time, `Serves ${recipe.servings}`, calories != null ? `${Math.round(calories)} kcal` : null]
-                      .filter(Boolean)
-                      .join(' · ')}
+                <p className="mt-2 text-xs text-secondary">
+                  {[time, `Serves ${recipe.servings}`, calories != null ? `${Math.round(calories)} kcal` : null]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+
+                {preview.length > 0 && (
+                  <p className="mt-2 text-sm text-secondary">
+                    {preview.map((ingredient) => ingredient.name).join(', ')}
+                    {recipe.ingredients.length > preview.length ? ' and more' : ''}
                   </p>
+                )}
 
-                  {preview.length > 0 && (
-                    <p className="mt-2 text-sm text-secondary">
-                      {preview.map((ingredient) => ingredient.name).join(', ')}
-                      {recipe.ingredients.length > preview.length ? ' and more' : ''}
-                    </p>
-                  )}
-                </Card>
-              </Link>
+                <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    aria-label={`Plan ${recipe.title}`}
+                    onClick={() => setAction({ kind: 'plan', target: toTarget(recipe) })}
+                  >
+                    Plan
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    aria-label={`Suggest ${recipe.title}`}
+                    onClick={() => setAction({ kind: 'suggest', target: toTarget(recipe) })}
+                  >
+                    Suggest
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    aria-label={`Add ingredients for ${recipe.title} to shopping`}
+                    onClick={() =>
+                      setShoppingTarget({ kind: 'recipe', ...toTarget(recipe) })
+                    }
+                  >
+                    Ingredients
+                  </Button>
+                </div>
+              </Card>
             );
           })}
         </div>
       )}
 
       <RecipeImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
+
+      <MealActionDialog
+        open={action !== null}
+        action={action?.kind ?? 'plan'}
+        recipe={action?.target ?? null}
+        onClose={() => setAction(null)}
+      />
+
+      <AddToShoppingDialog
+        open={shoppingTarget !== null}
+        target={shoppingTarget}
+        onClose={() => setShoppingTarget(null)}
+      />
     </div>
   );
 }

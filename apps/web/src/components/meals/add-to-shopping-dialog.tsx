@@ -8,16 +8,29 @@ import { apiFetch } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 import { MealPlanEntry, MealShoppingResult } from '@/lib/types';
 
+export type ShoppingTarget =
+  | { kind: 'plan'; entry: MealPlanEntry }
+  | {
+      kind: 'recipe';
+      source: 'catalogue' | 'household';
+      id: string;
+      title: string;
+      servings: number;
+    };
+
 interface AddToShoppingDialogProps {
-  entry: MealPlanEntry | null;
   open: boolean;
+  target?: ShoppingTarget | null;
+  /** @deprecated Use target. Kept for the old plan grid. */
+  entry?: MealPlanEntry | null;
   onClose: () => void;
   onAdded?: () => void;
 }
 
 export function AddToShoppingDialog({
-  entry,
   open,
+  target,
+  entry,
   onClose,
   onAdded,
 }: AddToShoppingDialogProps) {
@@ -26,24 +39,45 @@ export function AddToShoppingDialog({
   const [error, setError] = React.useState<string | null>(null);
   const [result, setResult] = React.useState<MealShoppingResult | null>(null);
 
+  const resolved: ShoppingTarget | null =
+    target ?? (entry ? { kind: 'plan', entry } : null);
+
   React.useEffect(() => {
     if (!open) return;
     setSubmitting(false);
     setError(null);
     setResult(null);
-  }, [open, entry?.id]);
+  }, [open, resolved?.kind, resolved?.kind === 'plan' ? resolved.entry.id : resolved?.id]);
 
-  const freeText = !entry || entry.recipe_source === 'free_text' || !entry.recipe_id;
+  const planEntry = resolved?.kind === 'plan' ? resolved.entry : null;
+  const recipe = resolved?.kind === 'recipe' ? resolved : null;
+  const freeText = planEntry
+    ? planEntry.recipe_source === 'free_text' || !planEntry.recipe_id
+    : false;
+  const title = planEntry?.recipe_title ?? recipe?.title ?? '';
+  const servings = planEntry?.servings ?? recipe?.servings ?? 0;
 
   const addIngredients = async () => {
-    if (!entry || freeText) return;
+    if (!resolved) return;
     setSubmitting(true);
     setError(null);
     try {
-      const response = await apiFetch<MealShoppingResult>(
-        `/api/v1/meals/plan/${encodeURIComponent(entry.id)}/shopping`,
-        { method: 'POST', body: JSON.stringify({}) }
-      );
+      const response =
+        resolved.kind === 'plan'
+          ? await apiFetch<MealShoppingResult>(
+              `/api/v1/meals/plan/${encodeURIComponent(resolved.entry.id)}/shopping`,
+              { method: 'POST', body: JSON.stringify({}) }
+            )
+          : await apiFetch<MealShoppingResult>(
+              `/api/v1/recipes/${encodeURIComponent(resolved.id)}/shopping`,
+              {
+                method: 'POST',
+                body: JSON.stringify({
+                  source: resolved.source,
+                  servings: resolved.servings,
+                }),
+              }
+            );
       setResult(response);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.shopping }),
@@ -60,18 +94,17 @@ export function AddToShoppingDialog({
   return (
     <Dialog open={open} onClose={onClose} title="Add ingredients to shopping">
       <div className="space-y-4">
-        {entry && (
+        {title && (
           <p className="text-sm">
-            {entry.recipe_title} for {entry.servings}{' '}
-            {entry.servings === 1 ? 'serving' : 'servings'}. Ingredient quantities scale to
-            the planned servings.
+            {title} for {servings} {servings === 1 ? 'serving' : 'servings'}.
+            Ingredient quantities scale to these servings.
           </p>
         )}
 
         {freeText && (
           <p className="text-sm text-secondary">
-            This meal is free text, so there are no recipe ingredients to add. Edit the meal
-            and link a recipe to use this.
+            This meal is free text, so there are no recipe ingredients to add. Choose a
+            recipe from the slot's recipe search to replace it, then add those ingredients.
           </p>
         )}
 
@@ -120,7 +153,7 @@ export function AddToShoppingDialog({
               <Button
                 type="button"
                 onClick={addIngredients}
-                disabled={submitting || freeText || !entry}
+                disabled={submitting || freeText || !resolved}
               >
                 {submitting ? 'Adding...' : 'Add ingredients'}
               </Button>

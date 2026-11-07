@@ -12,6 +12,12 @@ import { apiFetch } from '@/lib/api';
 import { useApiQuery } from '@/lib/query';
 import { queryKeys } from '@/lib/query-keys';
 import { Recipe, RecipeNutrition } from '@/lib/types';
+import { AddToShoppingDialog, ShoppingTarget } from '@/components/meals/add-to-shopping-dialog';
+import {
+  MealAction,
+  MealActionDialog,
+  RecipeTarget,
+} from '@/components/meals/meal-action-dialog';
 
 const CONFIDENCE_LABELS: Record<RecipeNutrition['confidence'], string> = {
   matched: 'Matched',
@@ -55,6 +61,10 @@ function RecipeView({ id }: { id: string }) {
 
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  const [action, setAction] = React.useState<{ kind: MealAction; target: RecipeTarget } | null>(
+    null
+  );
+  const [shoppingTarget, setShoppingTarget] = React.useState<ShoppingTarget | null>(null);
 
   const notFound =
     !isLoading &&
@@ -125,6 +135,12 @@ function RecipeView({ id }: { id: string }) {
   }
 
   const nutrition = recipe.nutrition;
+  const target: RecipeTarget = {
+    source: recipe.source,
+    id: recipe.id,
+    title: recipe.title,
+    servings: recipe.servings,
+  };
 
   return (
     <div className="space-y-6">
@@ -162,6 +178,32 @@ function RecipeView({ id }: { id: string }) {
             {deleting ? 'Deleting...' : 'Delete recipe'}
           </Button>
         )}
+      </div>
+
+      <div className="flex flex-wrap gap-2 rounded-card border border-border p-3">
+        <Button
+          type="button"
+          onClick={() => setAction({ kind: 'plan', target })}
+          aria-label={`Plan ${recipe.title}`}
+        >
+          Plan meal
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => setAction({ kind: 'suggest', target })}
+          aria-label={`Suggest ${recipe.title}`}
+        >
+          Suggest
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => setShoppingTarget({ kind: 'recipe', ...target })}
+          aria-label={`Add ingredients for ${recipe.title} to shopping`}
+        >
+          Add ingredients
+        </Button>
       </div>
 
       {deleteError && (
@@ -255,6 +297,19 @@ function RecipeView({ id }: { id: string }) {
           )}
         </Card>
       </div>
+
+      <MealActionDialog
+        open={action !== null}
+        action={action?.kind ?? 'plan'}
+        recipe={action?.target ?? null}
+        onClose={() => setAction(null)}
+      />
+
+      <AddToShoppingDialog
+        open={shoppingTarget !== null}
+        target={shoppingTarget}
+        onClose={() => setShoppingTarget(null)}
+      />
     </div>
   );
 }

@@ -247,13 +247,17 @@ There is no More sheet. No destination can disappear from navigation.
 ### Meals
 
 - Destination: `/meals`, grouped under Daily.
-- Three tabs: Ideas, Plan, Recipes.
-- Ideas are shared household suggestions with votes and the suggester's name.
-- Plan is a Monday-to-Sunday grid with breakfast, lunch, dinner, and snack slots.
-- A planned meal can link a catalogue or household recipe; free-text meals are allowed but cannot add ingredients to shopping.
+- Two views: `This week` and `Recipes`.
+- `This week` is the default. It is a Monday-to-Sunday board with breakfast, lunch, dinner, and snack slots.
+- Every empty slot names its context: `Add dinner for Tue 11`, never a generic `Add meal`.
+- A slot sheet contains the planned meal, slot-specific ideas, recipe search, and a free-text suggestion form.
+- Ideas may carry a date and meal slot, or sit in the collapsible `Unscheduled ideas` tray.
+- The suggester automatically votes for their own idea.
+- Choosing an idea turns it into the planned meal for that slot.
 - Recipe search uses the local SQLite FTS5 catalogue. Household recipes are merged into results.
+- Every recipe card and detail page offers `Plan`, `Suggest`, and `Add ingredients`.
+- `Add to shopping` works from a planned meal or directly from a recipe, scales to servings, merges matching unchecked items, and confirms before writing.
 - Recipe detail shows ingredients, method, tags, source attribution, and per-serving nutrition with a confidence label.
-- `Add to shopping` scales ingredients to planned servings, merges matching unchecked items, and confirms before writing.
 - Nutrition is an estimate, never a medical claim. Missing matches are shown honestly.
 
 ### Private Health Diary

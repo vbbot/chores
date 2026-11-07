@@ -317,6 +317,8 @@ export const mealIdeaCreateSchema = z.object({
   recipe_source: z.enum(['catalogue', 'household', 'free_text']).default('free_text'),
   recipe_id: z.string().min(1).max(120).nullable().optional(),
   note: z.string().trim().max(500).nullable().optional(),
+  suggested_for_date: dateSchema.nullable().optional(),
+  suggested_for_slot: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).nullable().optional(),
 });
 
 export const mealPlanUpsertSchema = z.object({
@@ -325,12 +327,20 @@ export const mealPlanUpsertSchema = z.object({
   recipe_source: z.enum(['catalogue', 'household', 'free_text']),
   recipe_id: z.string().min(1).max(120).nullable().optional(),
   recipe_title: z.string().trim().min(1).max(150),
-  servings: z.number().int().min(1).max(50).default(4),
+  servings: z.number().int().min(1).max(100).default(4),
   cook_id: z.string().min(1).nullable().optional(),
+  serve_time: timeSchema.nullable().optional(),
+  idea_id: z.string().min(1).max(120).nullable().optional(),
   status: z.enum(['planned', 'cooked', 'skipped']).default('planned'),
 });
 
 export const mealShoppingSchema = z.object({
+  list_id: z.string().min(1).nullable().optional(),
+});
+
+export const recipeShoppingSchema = z.object({
+  source: z.enum(['catalogue', 'household']),
+  servings: z.number().int().min(1).max(100),
   list_id: z.string().min(1).nullable().optional(),
 });
 

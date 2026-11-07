@@ -70,6 +70,8 @@ export interface MealIdea {
   suggested_by: string;
   suggested_by_name: string;
   status: MealIdeaStatus;
+  suggested_for_date: string | null;
+  suggested_for_slot: MealSlot | null;
   votes: number;
   voted_by_me: boolean;
   created_at: string;
@@ -85,6 +87,8 @@ export interface MealPlanEntry {
   servings: number;
   cook_id: string | null;
   cook_name: string | null;
+  serve_time: string | null;
+  idea_id: string | null;
   status: MealPlanStatus;
   created_at: string;
   updated_at: string;

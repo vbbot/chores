@@ -2,14 +2,12 @@
 
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import MealIdeas from '@/components/meals/meal-ideas';
-import MealPlan from '@/components/meals/meal-plan';
+import MealWeek from '@/components/meals/meal-week';
 import RecipeBrowser from '@/components/meals/recipe-browser';
 import { cn } from '@/lib/utils';
 
 const VIEWS = [
-  { id: 'ideas', label: 'Ideas' },
-  { id: 'plan', label: 'Plan' },
+  { id: 'week', label: 'This week' },
   { id: 'recipes', label: 'Recipes' },
 ] as const;
 
@@ -19,9 +17,8 @@ function MealsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requested = searchParams.get('view');
-  const view: View = VIEWS.some((item) => item.id === requested)
-    ? (requested as View)
-    : 'ideas';
+  const view: View = requested === 'recipes' ? 'recipes' : 'week';
+  const openIdeas = requested === 'ideas';
 
   const setView = (next: View) => {
     router.replace(`/meals?view=${next}`);
@@ -32,7 +29,7 @@ function MealsContent() {
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Meals</h1>
         <p className="text-sm text-secondary">
-          Suggest meals together, plan the week, and turn recipes into shopping.
+          Plan the week together, then turn recipes into shopping.
         </p>
       </div>
 
@@ -64,8 +61,7 @@ function MealsContent() {
       </div>
 
       <div role="tabpanel">
-        {view === 'ideas' && <MealIdeas />}
-        {view === 'plan' && <MealPlan />}
+        {view === 'week' && <MealWeek openIdeasInitially={openIdeas} />}
         {view === 'recipes' && <RecipeBrowser />}
       </div>
     </div>

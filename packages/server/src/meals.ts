@@ -8,6 +8,7 @@ import type {
 } from '@chores/domain';
 import type { User } from '@chores/domain';
 
+import { dbAdmin } from './firebase';
 import { householdCollection } from './households';
 import { ApiError } from './http';
 import { getRecipe } from './recipes';
@@ -61,8 +62,13 @@ export async function createMealIdea(
     recipe_source: 'catalogue' | 'household' | 'free_text';
     recipe_id?: string | null;
     note?: string | null;
+    suggested_for_date?: string | null;
+    suggested_for_slot?: MealSlot | null;
   }
 ): Promise<MealIdea> {
+  if (Boolean(input.suggested_for_date) !== Boolean(input.suggested_for_slot)) {
+    throw new ApiError('Choose both a day and a meal, or neither', 400);
+  }
   let title = input.title?.trim() ?? '';
   if (input.recipe_source !== 'free_text' && input.recipe_id) {
     const recipe = await getRecipe(householdId, input.recipe_source, input.recipe_id);
@@ -80,16 +86,22 @@ export async function createMealIdea(
     note: input.note?.trim() || null,
     suggested_by: userId,
     status: 'idea' as const,
+    suggested_for_date: input.suggested_for_date ?? null,
+    suggested_for_slot: input.suggested_for_slot ?? null,
     created_at: now,
   };
-  await householdCollection(householdId, 'mealIdeas').doc(id).set(idea);
+  const ref = householdCollection(householdId, 'mealIdeas').doc(id);
+  const batch = dbAdmin().batch();
+  batch.set(ref, idea);
+  batch.set(ref.collection('votes').doc(userId), { created_at: now });
+  await batch.commit();
   const names = await memberNames(householdId);
   return {
     id,
     ...idea,
     suggested_by_name: names.get(userId) ?? 'Someone',
-    votes: 0,
-    voted_by_me: false,
+    votes: 1,
+    voted_by_me: true,
   };
 }
 
@@ -162,6 +174,8 @@ export async function upsertMealPlanEntry(
     recipe_title: string;
     servings: number;
     cook_id?: string | null;
+    serve_time?: string | null;
+    idea_id?: string | null;
     status?: 'planned' | 'cooked' | 'skipped';
   }
 ): Promise<MealPlanEntry> {
@@ -176,6 +190,13 @@ export async function upsertMealPlanEntry(
   }
   const id = `${input.date}_${input.slot}`;
   const existing = await householdCollection(householdId, 'mealPlan').doc(id).get();
+  const previousIdeaId = existing.exists
+    ? ((existing.data()?.idea_id as string | null | undefined) ?? null)
+    : null;
+  const ideaRef = input.idea_id
+    ? householdCollection(householdId, 'mealIdeas').doc(input.idea_id)
+    : null;
+  const ideaExists = ideaRef ? (await ideaRef.get()).exists : false;
   const now = new Date().toISOString();
   const entry = {
     household_id: householdId,
@@ -186,11 +207,27 @@ export async function upsertMealPlanEntry(
     recipe_title: input.recipe_title.trim(),
     servings: input.servings,
     cook_id: input.cook_id ?? null,
+    serve_time: input.serve_time ?? null,
+    idea_id: ideaExists && input.idea_id ? input.idea_id : null,
     status: input.status ?? 'planned',
     created_at: existing.exists ? (existing.data()?.created_at as string) : now,
     updated_at: now,
   };
-  await householdCollection(householdId, 'mealPlan').doc(id).set(entry, { merge: true });
+  const planRef = householdCollection(householdId, 'mealPlan').doc(id);
+  const batch = dbAdmin().batch();
+  batch.set(planRef, entry, { merge: true });
+  if (previousIdeaId && previousIdeaId !== entry.idea_id) {
+    const previousIdeaRef = householdCollection(householdId, 'mealIdeas').doc(
+      previousIdeaId
+    );
+    if ((await previousIdeaRef.get()).exists) {
+      batch.set(previousIdeaRef, { status: 'idea' }, { merge: true });
+    }
+  }
+  if (ideaExists && ideaRef) {
+    batch.update(ideaRef, { status: 'planned' });
+  }
+  await batch.commit();
   const names = await memberNames(householdId);
   return {
     id,
@@ -204,7 +241,20 @@ export async function deleteMealPlanEntry(
   entryId: string
 ): Promise<void> {
   const ref = householdCollection(householdId, 'mealPlan').doc(entryId);
-  if (!(await ref.get()).exists) throw new ApiError('Planned meal not found', 404);
+  const doc = await ref.get();
+  if (!doc.exists) throw new ApiError('Planned meal not found', 404);
+  const ideaId = doc.data()?.idea_id as string | null | undefined;
+  if (ideaId) {
+    const ideaRef = householdCollection(householdId, 'mealIdeas').doc(ideaId);
+    const ideaExists = (await ideaRef.get()).exists;
+    const batch = dbAdmin().batch();
+    batch.delete(ref);
+    if (ideaExists) {
+      batch.set(ideaRef, { status: 'idea' }, { merge: true });
+    }
+    await batch.commit();
+    return;
+  }
   await ref.delete();
 }
 
@@ -247,24 +297,25 @@ function normaliseName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-export async function addPlannedMealToShopping(
-  householdId: string,
-  userId: string,
-  entryId: string,
-  listId?: string | null
-): Promise<MealShoppingResult> {
-  const entry = await getMealPlanEntry(householdId, entryId);
-  if (entry.recipe_source === 'free_text' || !entry.recipe_id) {
-    throw new ApiError('This meal has no recipe ingredients', 400);
-  }
-  const recipe = await getRecipe(householdId, entry.recipe_source, entry.recipe_id);
+async function resolveShoppingList(householdId: string, listId?: string | null) {
   const lists = await listShoppingLists(householdId);
   const list = listId
     ? lists.find((candidate) => candidate.id === listId)
     : lists[0];
   if (!list) throw new ApiError('Shopping list not found', 404);
+  return list;
+}
 
-  const factor = entry.servings / Math.max(1, recipe.servings);
+async function mergeRecipeIntoList(
+  householdId: string,
+  userId: string,
+  list: Awaited<ReturnType<typeof resolveShoppingList>>,
+  recipe: Awaited<ReturnType<typeof getRecipe>>,
+  servings: number,
+  sourceRecipeId: string,
+  sourceMealId: string | null
+): Promise<MealShoppingResult> {
+  const factor = servings / Math.max(1, recipe.servings);
   let added = 0;
   let merged = 0;
   let skipped = 0;
@@ -288,11 +339,8 @@ export async function addPlannedMealToShopping(
     if (existing) {
       await updateShoppingItem(householdId, existing.id, {
         quantity: Math.round((existing.quantity + (quantity ?? 1)) * 100) / 100,
-        source_recipe_id:
-          entry.recipe_source === 'catalogue'
-            ? entry.recipe_id
-            : `household:${entry.recipe_id}`,
-        source_meal_id: entry.id,
+        source_recipe_id: sourceRecipeId,
+        source_meal_id: sourceMealId,
       });
       merged += 1;
     } else {
@@ -301,11 +349,8 @@ export async function addPlannedMealToShopping(
         quantity: quantity ?? 1,
         unit: ingredient.unit,
         category: categoryFor(ingredient.name),
-        source_recipe_id:
-          entry.recipe_source === 'catalogue'
-            ? entry.recipe_id
-            : `household:${entry.recipe_id}`,
-        source_meal_id: entry.id,
+        source_recipe_id: sourceRecipeId,
+        source_meal_id: sourceMealId,
       });
       list.items.push(created);
       added += 1;
@@ -314,4 +359,53 @@ export async function addPlannedMealToShopping(
   }
 
   return { added, merged, skipped, items };
+}
+
+export async function addRecipeToShopping(
+  householdId: string,
+  userId: string,
+  source: 'catalogue' | 'household',
+  recipeId: string,
+  servings: number,
+  listId?: string | null
+): Promise<MealShoppingResult> {
+  const recipe = await getRecipe(householdId, source, recipeId);
+  const list = await resolveShoppingList(householdId, listId);
+  const sourceRecipeId = source === 'catalogue' ? recipeId : `household:${recipeId}`;
+  return mergeRecipeIntoList(
+    householdId,
+    userId,
+    list,
+    recipe,
+    servings,
+    sourceRecipeId,
+    null
+  );
+}
+
+export async function addPlannedMealToShopping(
+  householdId: string,
+  userId: string,
+  entryId: string,
+  listId?: string | null
+): Promise<MealShoppingResult> {
+  const entry = await getMealPlanEntry(householdId, entryId);
+  if (entry.recipe_source === 'free_text' || !entry.recipe_id) {
+    throw new ApiError('This meal has no recipe ingredients', 400);
+  }
+  const recipe = await getRecipe(householdId, entry.recipe_source, entry.recipe_id);
+  const list = await resolveShoppingList(householdId, listId);
+  const sourceRecipeId =
+    entry.recipe_source === 'catalogue'
+      ? entry.recipe_id
+      : `household:${entry.recipe_id}`;
+  return mergeRecipeIntoList(
+    householdId,
+    userId,
+    list,
+    recipe,
+    entry.servings,
+    sourceRecipeId,
+    entry.id
+  );
 }
