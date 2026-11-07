@@ -216,15 +216,17 @@ export const shoppingListCreateSchema = z.object({
 export const shoppingItemCreateSchema = z.object({
   name: z.string().trim().min(1).max(150),
   category: z.string().max(50).nullable().optional(),
-  quantity: z.number().int().positive().default(1),
+  quantity: z.number().positive().max(10000).default(1),
   unit: z.string().max(20).nullable().optional(),
   notes: z.string().nullable().optional(),
+  source_recipe_id: z.string().max(100).nullable().optional(),
+  source_meal_id: z.string().max(100).nullable().optional(),
 });
 
 export const shoppingItemUpdateSchema = z.object({
   name: z.string().trim().min(1).max(150).optional(),
   category: z.string().max(50).nullable().optional(),
-  quantity: z.number().int().positive().optional(),
+  quantity: z.number().positive().max(10000).optional(),
   unit: z.string().max(20).nullable().optional(),
   notes: z.string().nullable().optional(),
   is_checked: z.boolean().optional(),
@@ -266,6 +268,101 @@ export const noteUpdateSchema = z.object({
   content: z.string().optional(),
   is_pinned: z.boolean().optional(),
   category: z.string().max(50).nullable().optional(),
+});
+
+const httpUrlSchema = z
+  .string()
+  .url()
+  .max(2000)
+  .refine((value) => /^https?:\/\//i.test(value), 'Use an http or https link');
+
+export const recipeSearchSchema = z.object({
+  q: z.string().trim().max(120).default(''),
+  max_time: z.coerce.number().int().positive().max(1440).optional(),
+  page: z.coerce.number().int().min(1).max(100).default(1),
+});
+
+export const householdRecipeCreateSchema = z.object({
+  title: z.string().trim().min(1).max(150),
+  source_url: httpUrlSchema.nullable().optional(),
+  source_name: z.string().trim().max(100).nullable().optional(),
+  license: z.string().trim().max(100).nullable().optional(),
+  servings: z.number().int().min(1).max(100).default(4),
+  prep_minutes: z.number().int().min(0).max(1440).nullable().optional(),
+  cook_minutes: z.number().int().min(0).max(1440).nullable().optional(),
+  ingredients: z.array(z.string().trim().min(1).max(300)).min(1).max(100),
+  steps: z.array(z.string().trim().min(1).max(2000)).max(100).default([]),
+  tags: z.array(z.string().trim().min(1).max(30)).max(20).default([]),
+});
+
+export const householdRecipeUpdateSchema = z.object({
+  title: z.string().trim().min(1).max(150).optional(),
+  source_url: httpUrlSchema.nullable().optional(),
+  source_name: z.string().trim().max(100).nullable().optional(),
+  license: z.string().trim().max(100).nullable().optional(),
+  servings: z.number().int().min(1).max(100).optional(),
+  prep_minutes: z.number().int().min(0).max(1440).nullable().optional(),
+  cook_minutes: z.number().int().min(0).max(1440).nullable().optional(),
+  ingredients: z.array(z.string().trim().min(1).max(300)).min(1).max(100).optional(),
+  steps: z.array(z.string().trim().min(1).max(2000)).max(100).optional(),
+  tags: z.array(z.string().trim().min(1).max(30)).max(20).optional(),
+});
+
+export const recipeImportSchema = z.object({
+  url: httpUrlSchema,
+});
+
+export const mealIdeaCreateSchema = z.object({
+  title: z.string().trim().min(1).max(150).optional(),
+  recipe_source: z.enum(['catalogue', 'household', 'free_text']).default('free_text'),
+  recipe_id: z.string().min(1).max(120).nullable().optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+  suggested_for_date: dateSchema.nullable().optional(),
+  suggested_for_slot: z.enum(['breakfast', 'lunch', 'dinner', 'snack']).nullable().optional(),
+});
+
+export const mealPlanUpsertSchema = z.object({
+  date: dateSchema,
+  slot: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
+  recipe_source: z.enum(['catalogue', 'household', 'free_text']),
+  recipe_id: z.string().min(1).max(120).nullable().optional(),
+  recipe_title: z.string().trim().min(1).max(150),
+  servings: z.number().int().min(1).max(100).default(4),
+  cook_id: z.string().min(1).nullable().optional(),
+  serve_time: timeSchema.nullable().optional(),
+  idea_id: z.string().min(1).max(120).nullable().optional(),
+  status: z.enum(['planned', 'cooked', 'skipped']).default('planned'),
+});
+
+export const mealShoppingSchema = z.object({
+  list_id: z.string().min(1).nullable().optional(),
+});
+
+export const recipeShoppingSchema = z.object({
+  source: z.enum(['catalogue', 'household']),
+  servings: z.number().int().min(1).max(100),
+  list_id: z.string().min(1).nullable().optional(),
+});
+
+export const healthEntryCreateSchema = z.object({
+  date: dateSchema,
+  time: timeSchema,
+  symptoms: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
+  severity: z.number().int().min(1).max(5),
+  duration_minutes: z.number().int().min(0).max(10080).nullable().optional(),
+  energy: z.number().int().min(1).max(5).nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+  consent: z.boolean().default(false),
+});
+
+export const healthEntryUpdateSchema = z.object({
+  date: dateSchema.optional(),
+  time: timeSchema.optional(),
+  symptoms: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
+  severity: z.number().int().min(1).max(5).optional(),
+  duration_minutes: z.number().int().min(0).max(10080).nullable().optional(),
+  energy: z.number().int().min(1).max(5).nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
 });
 
 export const pushSubscriptionSchema = z.object({

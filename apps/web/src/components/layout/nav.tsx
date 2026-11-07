@@ -46,6 +46,13 @@ export function Nav() {
         queries.push({ key: queryKeys.notes, endpoint: '/api/v1/notes' });
       } else if (href === '/progress') {
         queries.push({ key: queryKeys.progress, endpoint: '/api/v1/progress' });
+      } else if (href === '/meals') {
+        queries.push(
+          { key: queryKeys.meals.ideas, endpoint: '/api/v1/meals/ideas' },
+          { key: queryKeys.meals.recipes(''), endpoint: '/api/v1/recipes?q=' }
+        );
+      } else if (href === '/health') {
+        queries.push({ key: queryKeys.health, endpoint: '/api/v1/health' });
       }
       queries.forEach(({ key, endpoint }) => {
         queryClient.prefetchQuery({ queryKey: key, queryFn: () => apiFetch(endpoint) });

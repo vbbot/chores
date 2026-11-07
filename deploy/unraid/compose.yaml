@@ -5,10 +5,13 @@ services:
     restart: unless-stopped
     env_file:
       - ./chores.env
+    environment:
+      RECIPE_DB_PATH: /data/recipes.db
     ports:
       - "3000:3000"
     volumes:
       - /mnt/user/appdata/chores/firebase-admin.json:/run/secrets/firebase-admin.json:ro
+      - /mnt/user/appdata/chores/recipes:/data
     healthcheck:
       test:
         - CMD

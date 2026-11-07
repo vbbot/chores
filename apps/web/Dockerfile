@@ -2,12 +2,14 @@ FROM node:22-alpine AS base
 RUN apk add --no-cache libc6-compat
 
 FROM base AS deps
+RUN apk add --no-cache python3 make g++
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/domain/package.json packages/domain/package.json
 COPY packages/api-client/package.json packages/api-client/package.json
 COPY packages/server/package.json packages/server/package.json
+COPY packages/food-data/package.json packages/food-data/package.json
 COPY packages/config/package.json packages/config/package.json
 RUN npm ci --no-audit --no-fund
 

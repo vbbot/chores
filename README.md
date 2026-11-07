@@ -1,7 +1,7 @@
 # Chores
 
 A UK household management PWA for chores, bin collections, shopping, bills,
-calendar events, and shared notes.
+calendar events, shared notes, meal planning, and a private health diary.
 
 It includes personal and household XP, levels, on-time chore streaks, a progress
 page, rule-based chore suggestions, one-off tasks, weekday and monthly recurrence,
@@ -20,7 +20,9 @@ override reminder times, and every item can carry its own reminder setting.
 - Docker Compose and nginx
 
 There is no separate API server, database container, Redis, or Celery worker.
-Next.js route handlers use the Firebase Admin SDK.
+Next.js route handlers use the Firebase Admin SDK. The recipe catalogue is a
+local SQLite FTS5 file mounted into the frontend container; it is not household
+state and is not stored in Firestore.
 
 ## Repository layout
 
@@ -29,6 +31,7 @@ apps/web                 Next.js app, API routes, Playwright tests
 packages/domain          Shared types, validation, and household logic
 packages/api-client      Typed client with cookie and bearer auth adapters
 packages/server          Firebase Admin, repositories, auth, iCal, jobs
+packages/food-data       Recipe catalogue schema, SQLite search, importer, nutrition
 packages/config          Shared TypeScript configuration
 ```
 
@@ -79,6 +82,36 @@ Open http://localhost.
 
 The stack contains `frontend`, `cron`, and `nginx`. The `cron` container creates
 due chores at 00:05 and runs the reminder engine every 15 minutes, Europe/London.
+
+## Meals and recipes
+
+The meals section has shared ideas, a weekly plan, recipe search, nutrition
+estimates, and shopping-list integration.
+
+To build the local recipe catalogue, download the
+[Food.com CC0 recipes dataset](https://www.kaggle.com/datasets/irkaal/foodcom-recipes-and-reviews)
+and import it into the mounted volume:
+
+```sh
+# Local development: writes ./data/recipes.db by default.
+make food-import CSV=/path/to/recipes.csv
+
+# Docker: imports into the mounted /data volume.
+docker compose -f docker-compose.yml -f docker-compose.build.yml \
+  run --rm --user root -w /app -v "$PWD:/import:ro" frontend \
+  npm run food:import-recipes -- /import/recipes.csv
+```
+
+For Docker, the database lives at `/data/recipes.db` and the volume is
+`chores-recipe-data`. The importer is a one-off job; the image does not include
+recipe data. Without the file, recipe search returns an empty catalogue and
+household-imported recipes still work.
+
+Recipe URL import only accepts `http` and `https` links with schema.org Recipe
+data. It blocks private, loopback, link-local, and metadata addresses.
+
+Health entries live under the signed-in user, not the household. They are
+excluded from household export and are never returned in member or admin views.
 
 ## Local development
 

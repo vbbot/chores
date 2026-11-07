@@ -1,4 +1,4 @@
-.PHONY: up up-build down logs install dev build test e2e verify
+.PHONY: up up-build down logs install dev build test e2e verify food-import
 
 install:
 	npm install
@@ -26,5 +26,9 @@ test:
 
 e2e:
 	npm run e2e
+
+food-import:
+	@test -n "$(CSV)" || (echo "Usage: make food-import CSV=/path/to/recipes.csv" >&2; exit 1)
+	npm run food:import-recipes -- $(CSV)
 
 verify: e2e test

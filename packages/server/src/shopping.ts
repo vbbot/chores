@@ -75,6 +75,8 @@ export async function addShoppingItem(
     quantity?: number;
     unit?: string | null;
     notes?: string | null;
+    source_recipe_id?: string | null;
+    source_meal_id?: string | null;
   }
 ): Promise<ShoppingItem> {
   const list = await householdCollection(householdId, 'shoppingLists').doc(listId).get();
@@ -92,6 +94,8 @@ export async function addShoppingItem(
     is_checked: false,
     notes: input.notes ?? null,
     checked_at: null,
+    source_recipe_id: input.source_recipe_id ?? null,
+    source_meal_id: input.source_meal_id ?? null,
     created_at: new Date().toISOString(),
   };
   await householdCollection(householdId, 'shoppingLists')

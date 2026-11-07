@@ -157,6 +157,9 @@ export async function exportHouseholdData(householdId: string): Promise<Record<s
     'calendarEvents',
     'notes',
     'shoppingLists',
+    'recipes',
+    'mealIdeas',
+    'mealPlan',
   ];
 
   const [household, members, ...collections] = await Promise.all([
@@ -186,7 +189,7 @@ export async function exportHouseholdData(householdId: string): Promise<Record<s
   );
 
   const safeMembers = members.map((member) => {
-    const { ical_token: _icalToken, ...safe } = member;
+    const { ical_token: _icalToken, health_consent_at: _healthConsent, ...safe } = member;
     return safe;
   });
   const data: Record<string, unknown> = { household, members: safeMembers };

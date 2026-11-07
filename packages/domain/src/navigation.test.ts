@@ -13,7 +13,7 @@ describe('navigation order', () => {
   });
 
   it('keeps a saved order', () => {
-    const saved = ['notes', 'dashboard', 'chores', 'bins', 'shopping', 'bills', 'calendar', 'progress'];
+    const saved = [...NAVIGATION_ITEM_IDS].reverse();
     expect(normalizeNavigationOrder(saved)).toEqual(saved);
   });
 

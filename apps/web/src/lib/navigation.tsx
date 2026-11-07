@@ -14,7 +14,9 @@ import {
   BinsIcon,
   CalendarIcon,
   ChoresIcon,
+  HealthIcon,
   HomeIcon,
+  MealsIcon,
   NotesIcon,
   ProgressIcon,
   ShoppingIcon,
@@ -32,6 +34,8 @@ const NAVIGATION_ICONS: Record<NavigationItemId, IconComponent> = {
   calendar: CalendarIcon,
   notes: NotesIcon,
   progress: ProgressIcon,
+  meals: MealsIcon,
+  health: HealthIcon,
 };
 
 export const allDestination = {
