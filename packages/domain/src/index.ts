@@ -1,4 +1,6 @@
 export * from './types';
+export * from './food';
+export * from './health';
 export * from './navigation';
 export * from './assignment';
 export * from './dates';

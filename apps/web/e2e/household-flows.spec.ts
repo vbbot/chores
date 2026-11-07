@@ -312,7 +312,7 @@ test('household journey: signup, setup, chores, bins, shopping, bills, calendar,
   await expect(editor.getByText('More in All', { exact: true })).toBeVisible();
   await shot(page, project, '20-navigation-editor');
 
-  for (let index = 0; index < 3; index += 1) {
+  for (let index = 0; index < 4; index += 1) {
     await editor.getByRole('button', { name: 'Move Notes up' }).click();
   }
   await editor.getByRole('button', { name: 'Save' }).click();

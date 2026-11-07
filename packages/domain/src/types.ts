@@ -38,6 +38,7 @@ export interface User {
   notification_prefs: NotificationPrefs;
   navigation_order: NavigationItemId[];
   ical_token: string | null;
+  health_consent_at?: string | null;
   created_at: string;
 }
 
@@ -178,6 +179,8 @@ export interface ShoppingItem {
   unit: string | null;
   is_checked: boolean;
   notes: string | null;
+  source_recipe_id?: string | null;
+  source_meal_id?: string | null;
   checked_at: string | null;
   created_at: string;
 }

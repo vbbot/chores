@@ -12,7 +12,7 @@ import { useAuth } from '@/lib/auth';
 import { dueLabel, londonDateString } from '@/lib/dates';
 import { useApiQuery } from '@/lib/query';
 import { queryKeys } from '@/lib/query-keys';
-import { BinSchedule, ChoreInstance, ProgressSummary, User } from '@/lib/types';
+import { BinSchedule, ChoreInstance, MealPlanEntry, ProgressSummary, User } from '@/lib/types';
 
 interface CompletionResponse {
   xp_awarded: number;
@@ -32,8 +32,18 @@ export default function DashboardPage() {
   const binsQuery = useApiQuery<BinSchedule[]>(queryKeys.bins.tonight, '/api/v1/bins/tonight');
   const progressQuery = useApiQuery<ProgressSummary>(queryKeys.progress, '/api/v1/progress');
   const membersQuery = useApiQuery<User[]>(queryKeys.members, '/api/v1/households/members');
+  const mealsQuery = useApiQuery<MealPlanEntry[]>(
+    queryKeys.meals.plan(today, today),
+    `/api/v1/meals/plan?from=${today}&to=${today}`
+  );
 
   const chores = choresQuery.data ?? [];
+  const todayMeals = mealsQuery.data ?? [];
+  const mainMeal =
+    todayMeals.find((meal) => meal.slot === 'dinner') ??
+    todayMeals.find((meal) => meal.slot === 'lunch') ??
+    todayMeals[0] ??
+    null;
   const members = membersQuery.data ?? [];
   const tonightsBins = binsQuery.data ?? [];
   const progress = progressQuery.data ?? null;
@@ -211,6 +221,50 @@ export default function DashboardPage() {
           )}
         </section>
       )}
+
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between border-b border-border pb-2">
+          <h2 className="text-lg font-semibold">Tonight&apos;s meal</h2>
+          <Link
+            href="/meals?view=plan"
+            className="text-sm text-secondary underline hover:text-foreground min-h-[44px] inline-flex items-center"
+          >
+            View meal plan
+          </Link>
+        </div>
+
+        {mainMeal ? (
+          <div className="p-4 border border-border rounded-card bg-background flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">{mainMeal.recipe_title}</p>
+              <p className="mt-0.5 text-xs text-secondary">
+                {mainMeal.servings} {mainMeal.servings === 1 ? 'serving' : 'servings'}
+                {mainMeal.cook_name ? ` • ${mainMeal.cook_name}` : ''}
+                {mainMeal.serve_time ? ` • Served at ${mainMeal.serve_time.slice(0, 5)}` : ''}
+                {mainMeal.recipe_source !== 'free_text' && mainMeal.recipe_id
+                  ? ` • ${mainMeal.recipe_source === 'household' ? 'Household recipe' : 'Catalogue recipe'}`
+                  : ''}
+              </p>
+            </div>
+            {mainMeal.recipe_source !== 'free_text' && mainMeal.recipe_id ? (
+              <Link
+                href={`/meals/recipes/${mainMeal.recipe_id}?source=${mainMeal.recipe_source}`}
+                className="text-sm font-semibold underline underline-offset-4 min-h-[44px] inline-flex items-center"
+              >
+                Open recipe
+              </Link>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-sm text-secondary">
+            Nothing planned for today.{' '}
+            <Link href="/meals?view=plan" className="underline hover:text-foreground">
+              Plan a meal
+            </Link>
+            .
+          </p>
+        )}
+      </section>
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between border-b border-border pb-2">
