@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, weekdayIndex } from '@chores/domain';
 import { Button } from '@/components/ui/button';
@@ -94,7 +95,6 @@ interface SlotCellProps {
   ideaCount: number;
   onOpen: (day: string, slot: MealSlot) => void;
   onAdd: (day: string, slot: MealSlot) => void;
-  onEdit: (entry: MealPlanEntry) => void;
   onToggleStatus: (entry: MealPlanEntry) => void;
   onRemove: (entry: MealPlanEntry) => void;
   onShopping: (entry: MealPlanEntry) => void;
@@ -107,7 +107,6 @@ function SlotCell({
   ideaCount,
   onOpen,
   onAdd,
-  onEdit,
   onToggleStatus,
   onRemove,
   onShopping,
@@ -150,14 +149,23 @@ function SlotCell({
   return (
     <div className="flex h-full flex-col gap-2 rounded-card border border-border p-2">
       <div>
-        <button
-          type="button"
-          onClick={() => onOpen(day, slot)}
-          aria-label={`Open ${meal} for ${fullDay}`}
-          className="min-h-[44px] w-full text-left text-sm font-medium leading-snug break-words hover:text-accent"
-        >
-          {entry.recipe_title}
-        </button>
+        {entry.recipe_source !== 'free_text' && entry.recipe_id ? (
+          <Link
+            href={`/meals/recipes/${entry.recipe_id}?source=${entry.recipe_source}`}
+            className="block min-h-[44px] text-left text-sm font-medium leading-snug break-words underline-offset-4 hover:text-accent hover:underline"
+          >
+            {entry.recipe_title}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onOpen(day, slot)}
+            aria-label={`Open ${meal} for ${fullDay}`}
+            className="min-h-[44px] w-full text-left text-sm font-medium leading-snug break-words hover:text-accent"
+          >
+            {entry.recipe_title}
+          </button>
+        )}
         <p className="mt-0.5 text-xs text-secondary">
           {entry.servings} {entry.servings === 1 ? 'serving' : 'servings'}
           {entry.cook_name ? ` • ${entry.cook_name}` : ''}
@@ -193,11 +201,11 @@ function SlotCell({
       <div className="mt-auto grid grid-cols-2 gap-1">
         <button
           type="button"
-          onClick={() => onEdit(entry)}
-          aria-label={`Edit ${entry.recipe_title}`}
+          onClick={() => onOpen(day, slot)}
+          aria-label={`Change ${meal} for ${fullDay}`}
           className="min-h-[44px] px-1 text-left text-xs text-secondary hover:text-foreground"
         >
-          Edit
+          Change
         </button>
         <button
           type="button"
@@ -700,7 +708,6 @@ export default function MealWeek({
                   ideaCount={ideasForSlot(day, slot).length}
                   onOpen={openSlot}
                   onAdd={openSlot}
-                  onEdit={openEdit}
                   onToggleStatus={toggleStatus}
                   onRemove={removeEntry}
                   onShopping={openShopping}
@@ -727,7 +734,6 @@ export default function MealWeek({
                   ideaCount={ideasForSlot(day, slot).length}
                   onOpen={openSlot}
                   onAdd={openSlot}
-                  onEdit={openEdit}
                   onToggleStatus={toggleStatus}
                   onRemove={removeEntry}
                   onShopping={openShopping}
@@ -849,7 +855,16 @@ export default function MealWeek({
               <div className="space-y-2 rounded-card border border-border p-3">
                 <div>
                   <p className="text-sm font-semibold break-words">
-                    {slotEntry.recipe_title}
+                    {slotEntry.recipe_source !== 'free_text' && slotEntry.recipe_id ? (
+                      <Link
+                        href={`/meals/recipes/${slotEntry.recipe_id}?source=${slotEntry.recipe_source}`}
+                        className="underline-offset-4 hover:text-accent hover:underline"
+                      >
+                        {slotEntry.recipe_title}
+                      </Link>
+                    ) : (
+                      slotEntry.recipe_title
+                    )}
                   </p>
                   <p className="mt-1 text-xs text-secondary">
                     {slotEntry.servings}{' '}
@@ -872,6 +887,14 @@ export default function MealWeek({
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {slotEntry.recipe_source !== 'free_text' && slotEntry.recipe_id ? (
+                    <Link
+                      href={`/meals/recipes/${slotEntry.recipe_id}?source=${slotEntry.recipe_source}`}
+                      className="inline-flex min-h-[44px] items-center justify-center whitespace-nowrap rounded-btn border border-foreground bg-background px-4 py-2 text-sm font-semibold hover:bg-surface"
+                    >
+                      View recipe
+                    </Link>
+                  ) : null}
                   <Button
                     type="button"
                     variant="secondary"
@@ -919,7 +942,18 @@ export default function MealWeek({
                     <li key={idea.id} className="rounded-card border border-border p-3">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium break-words">{idea.title}</p>
+                          <p className="text-sm font-medium break-words">
+                            {idea.recipe_source !== 'free_text' && idea.recipe_id ? (
+                              <Link
+                                href={`/meals/recipes/${idea.recipe_id}?source=${idea.recipe_source}`}
+                                className="underline-offset-4 hover:text-accent hover:underline"
+                              >
+                                {idea.title}
+                              </Link>
+                            ) : (
+                              idea.title
+                            )}
+                          </p>
                           {idea.note && (
                             <p className="mt-1 whitespace-pre-wrap text-xs text-secondary">
                               {idea.note}

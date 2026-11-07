@@ -117,6 +117,16 @@ test('meals and private health: week board, ideas, shopping, recipe detail, diar
   ).toBeVisible();
   await shot(page, project, '30-meal-week');
 
+  // A planned meal links straight to its recipe instructions.
+  await page
+    .getByRole('link', { name: 'Mushroom risotto' })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await expect(page.getByRole('heading', { name: 'Mushroom risotto' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ingredients' })).toBeVisible();
+  await goTo(page, 'Meals');
+
   // Planned meals can send ingredients to shopping.
   const shoppingButton = page
     .getByRole('button', { name: 'Add Mushroom risotto to shopping' })
