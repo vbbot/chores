@@ -201,6 +201,7 @@ export async function importFoodComCsv(options: ImportOptions): Promise<ImportRe
 
   if (batch.length > 0) flush(batch);
   db.exec(`INSERT INTO recipe_search(recipe_search) VALUES('optimize')`);
+  db.pragma('journal_mode = DELETE');
   db.prepare(
     `INSERT INTO metadata (key, value) VALUES ('imported_at', ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`

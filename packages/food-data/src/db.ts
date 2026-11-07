@@ -19,7 +19,6 @@ export function getRecipeDb(): Database.Database | null {
   try {
     const db = new Database(path, { readonly: true, fileMustExist: true });
     db.pragma('query_only = ON');
-    db.pragma('journal_mode = WAL');
     db.pragma('mmap_size = 268435456');
     db.pragma('cache_size = -64000');
     cached = db;

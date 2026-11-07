@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { resetRecipeDbCache } from './db';
+import { getRecipeDb, openWritableRecipeDb, resetRecipeDbCache } from './db';
 import { importFoodComCsv } from './import';
 import { estimateNutrition } from './nutrition';
 import { searchCatalogueRecipes, searchTokens } from './search';
@@ -54,6 +54,16 @@ describe('recipe search', () => {
 
     const ingredientHits = searchCatalogueRecipes('mushroom');
     expect(ingredientHits.map((recipe) => recipe.title)).toEqual(['Mushroom Pasta']);
+  });
+
+  it('does not switch a read-only catalogue into WAL mode', () => {
+    const writable = openWritableRecipeDb(dbPath);
+    writable.pragma('journal_mode = DELETE');
+    writable.close();
+    resetRecipeDbCache();
+    const readonly = getRecipeDb();
+    expect(readonly).not.toBeNull();
+    expect(readonly!.pragma('journal_mode', { simple: true })).toBe('delete');
   });
 
   it('returns nothing when no database is present', () => {
